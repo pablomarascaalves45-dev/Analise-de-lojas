@@ -27,7 +27,6 @@ if uploaded_file:
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.header("⚙️ Filtros")
     
-    # Filtro 1: Estado
     lista_ufs = sorted(df[col_uf].dropna().unique().tolist())
     opcao_uf = st.sidebar.selectbox("Selecione o Estado:", ["Todos os Estados"] + lista_ufs)
     
@@ -36,7 +35,6 @@ if uploaded_file:
     else:
         df_filtrado = df[df[col_uf] == opcao_uf].copy()
 
-    # Filtro 2: Faturamento (Slider de Intervalo)
     fat_min_data = float(df_filtrado[col_fat].min())
     fat_max_data = float(df_filtrado[col_fat].max())
     
@@ -48,16 +46,14 @@ if uploaded_file:
         format="R$ {:,.0f}"
     )
     
-    # EXIBIÇÃO DO VALOR SELECIONADO (O que você pediu)
     st.sidebar.write(f"📊 **Selecionado:** R$ {faixa_faturamento[0]:,.0f} até R$ {faixa_faturamento[1]:,.0f}")
     
-    # Aplicação final dos filtros
     df_view = df_filtrado[
         (df_filtrado[col_fat] >= faixa_faturamento[0]) & 
         (df_filtrado[col_fat] <= faixa_faturamento[1])
     ].copy()
 
-    # --- LÓGICA DE CLASSIFICAÇÃO (REGRA 400K + DRE) ---
+    # --- LÓGICA DE CLASSIFICAÇÃO ---
     def classificar_performance(row):
         faturamento = row[col_fat]
         dre = row[col_dre]
@@ -75,14 +71,16 @@ if uploaded_file:
         qtd_ruim = len(df_view[df_view['Performance'] == '🔴 Ruim'])
         st.metric("Lojas 'Ruins'", qtd_ruim)
     with c3:
-        qtd_baixa = len(df_view[df_view['Performance'] == '🟡 Baixa'])
-        st.metric("Lojas 'Baixas'", qtd_baixa)
+        qtd_alta = len(df_view[df_view['Performance'] == '💎 Alta'])
+        st.metric("Lojas 'Alta Perf.'", qtd_alta)
     with c4:
         media_fat = df_view[col_fat].mean() if not df_view.empty else 0
         st.metric("Faturamento Médio", f"R$ {media_fat:,.2f}")
 
     # --- ABAS DE ANÁLISE ---
-    tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Tabela Detalhada (DRE)"])
+    tab_geo, tab_dna, tab_diagnostico, tab_listagem = st.tabs([
+        "🌎 Visão Geográfica", "🧬 DNA do Sucesso", "🧠 Diagnóstico Estratégico", "📋 Tabela Detalhada"
+    ])
 
     with tab_geo:
         col_g1, col_g2 = st.columns(2)
@@ -103,18 +101,61 @@ if uploaded_file:
     with tab_dna:
         st.subheader("Análise de Padrões (Proporção)")
         analise_alvo = st.selectbox("Cruzar performance com:", [col_posicao, col_estacionamento, col_porte])
-        
         fig_dna = px.histogram(df_view, x=analise_alvo, color="Performance", 
                                barmode="group", barnorm="percent",
                                color_discrete_map={'💎 Alta': '#27ae60', '🟡 Baixa': '#f1c40f', '🔴 Ruim': '#e74c3c'})
         st.plotly_chart(fig_dna, use_container_width=True)
 
+    with tab_diagnostico:
+        st.subheader("🧠 Interpretação Automática de Dados")
+        
+        if len(df_view) > 0:
+            col_diag1, col_diag2 = st.columns(2)
+            
+            with col_diag1:
+                st.write("### ✅ O que está funcionando?")
+                tops = df_view[df_view['Performance'] == '💎 Alta']
+                if not tops.empty:
+                    p_pos = tops[col_posicao].mode()[0]
+                    p_porte = tops[col_porte].mode()[0]
+                    st.success(f"""
+                    **DNA das Lojas de Elite:**
+                    * A maioria das lojas de Alta Performance são de **{p_pos}**.
+                    * Elas estão localizadas predominantemente em cidades de porte **{p_porte}**.
+                    * **Insight:** Priorize novas aberturas com estas características.
+                    """)
+                else:
+                    st.warning("Não há lojas de Alta Performance no filtro selecionado para gerar insights.")
+
+            with col_diag2:
+                st.write("### ⚠️ Onde está o perigo?")
+                ruins = df_view[df_view['Performance'] == '🔴 Ruim']
+                if not ruins.empty:
+                    r_pos = ruins[col_posicao].mode()[0]
+                    r_est = ruins[col_estacionamento].mode()[0]
+                    st.error(f"""
+                    **Padrão de Risco Identificado:**
+                    * Lojas classificadas como 'Ruins' (Venda < 400k + DRE Negativo) são frequentemente **{r_pos}**.
+                    * O fator estacionamento **{r_est}** aparece como um ponto crítico nessas unidades.
+                    * **Ação:** Reavaliar o custo fixo ou operação destas unidades.
+                    """)
+                else:
+                    st.info("Parabéns! Nenhuma loja 'Ruim' detectada neste filtro.")
+            
+            st.divider()
+            st.write("### 📈 Resumo Executivo")
+            percent_ruim = (qtd_ruim / len(df_view)) * 100
+            st.info(f"""
+            Nesta visão (**{opcao_uf}**), **{percent_ruim:.1f}%** das lojas estão operando com prejuízo e faturamento abaixo da meta de 400k. 
+            A média de faturamento da seleção é de **R$ {media_fat:,.2f}**.
+            """)
+
     with tab_listagem:
-        st.subheader(f"Lista de Lojas Filtradas")
-        df_display = df_view[[col_loja, col_uf, col_fat, col_dre, 'Performance', col_posicao]].copy()
+        st.subheader("Lista Detalhada")
+        df_display = df_view[[col_loja, col_uf, col_fat, col_dre, 'Performance', col_posicao, col_estacionamento, col_porte]].copy()
         df_display[col_dre] = df_display[col_dre].map("{:.2%}".format)
         df_display[col_fat] = df_display[col_fat].map("R$ {:,.2f}".format)
-        st.dataframe(df_display.sort_values(by=col_fat, ascending=False), use_container_width=True)
+        st.dataframe(df_display.sort_values(by='Performance'), use_container_width=True)
 
 else:
-    st.info("👋 Suba o arquivo Excel para iniciar a filtragem e análise.")
+    st.info("👋 Suba o arquivo Excel para iniciar o Diagnóstico Estratégico.")
