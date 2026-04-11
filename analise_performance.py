@@ -13,6 +13,7 @@ uploaded_file = st.file_uploader("📂 Suba a base de dados das lojas (Excel)", 
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
+    # Limpa espaços em branco nos nomes das colunas
     df.columns = df.columns.astype(str).str.strip()
     
     # MAPEAMENTO DAS COLUNAS
@@ -26,17 +27,17 @@ if uploaded_file:
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.header("⚙️ Filtros e Parâmetros")
     
-    # Filtro de Estado com opção "Todos"
-    lista_ufs = sorted(df[col_uf].unique().tolist())
+    # Opção de olhar por estado ou todas juntas
+    lista_ufs = sorted(df[col_uf].dropna().unique().tolist())
     opcao_uf = st.sidebar.selectbox("Selecione o Estado:", ["Todos os Estados"] + lista_ufs)
     
-    # Aplicação do Filtro
+    # Filtragem do DataFrame
     if opcao_uf == "Todos os Estados":
         df_view = df.copy()
     else:
         df_view = df[df[col_uf] == opcao_uf].copy()
 
-    # Régua de Sucesso (calculada sempre sobre o DF TOTAL para manter a referência nacional)
+    # Régua de Sucesso
     media_geral = float(df[col_fat].mean())
     meta_sucesso = st.sidebar.slider(
         "Régua de Alta Performance (Referência Nacional)", 
@@ -45,36 +46,39 @@ if uploaded_file:
         value=media_geral
     )
 
+    # Classificação de Performance
     df_view['Performance'] = df_view[col_fat].apply(lambda x: '💎 Alta' if x >= meta_sucesso else '📉 Comum')
 
-    # --- KPIs ---
+    # --- INDICADORES RÁPIDOS (KPIs) ---
     c1, c2, c3, c4 = st.columns(4)
+    
+    qtd_total = len(df_view)
+    qtd_alta_perf = len(df_view[df_view['Performance'] == '💎 Alta'])
+    fat_medio_local = df_view[col_fat].mean()
+    taxa_sucesso = (qtd_alta_perf / qtd_total * 100) if qtd_total > 0 else 0
+
     with c1:
-        st.metric("Qtd de Lojas", len(df_view))
+        st.metric("Total de Lojas", qtd_total)
     with c2:
-        faturamento_medio = df_view[col_fat].mean()
-        diff = faturamento_medio - media_geral
-        st.metric("Faturamento Médio", f"R$ {faturamento_medio:,.2f}", delta=f"{diff:,.2f} vs Média Geral")
+        diff_media = fat_medio_local - media_geral
+        st.metric("Faturamento Médio", f"R$ {fat_medio_local:,.2f}", delta=f"{diff_media:,.2f} vs Rede")
     with c3:
-        qtd_alta = len(df_view[df_view['Performance'] == '💎 Alta'])
-        st.metric("Lojas em Alta Performance", qtd_alta)
+        st.metric("Lojas em Alta Performance", qtd_alta_perf)
     with c4:
-        %_sucesso = (qtd_alta / len(df_view)) * 100 if len(df_view) > 0 else 0
-        st.metric("% de Sucesso no Filtro", f"{%_sucesso:.1f}%")
+        st.metric("% de Sucesso", f"{taxa_sucesso:.1f}%")
 
     # --- ABAS DE ANÁLISE ---
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Lista Detalhada"])
 
     with tab_geo:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Performance por UF")
-            # Mostra todas as UFs do filtro atual
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.subheader("Performance por Estado")
             fig_uf = px.histogram(df_view, x=col_uf, color="Performance", barmode="group",
                                   color_discrete_map={'💎 Alta': '#27ae60', '📉 Comum': '#e74c3c'}, 
                                   text_auto=True)
             st.plotly_chart(fig_uf, use_container_width=True)
-        with col2:
+        with col_g2:
             st.subheader("Sucesso por Porte de Cidade")
             fig_porte = px.histogram(df_view, x=col_porte, color="Performance", 
                                      barmode="group", barnorm="percent",
@@ -90,15 +94,14 @@ if uploaded_file:
                         points="all")
         st.plotly_chart(fig_dna, use_container_width=True)
         
-        # Insight inteligente
         tops = df_view[df_view['Performance'] == '💎 Alta']
         if not tops.empty:
             melhor_valor = tops[analise_alvo].mode()[0]
-            st.success(f"💡 No filtro **{opcao_uf}**, o padrão de sucesso em **{analise_alvo}** é: **{melhor_valor}**.")
+            st.success(f"💡 Padrão de Sucesso em **{opcao_uf}**: Lojas **{melhor_valor}** tendem a ser as melhores em **{analise_alvo}**.")
 
     with tab_listagem:
-        st.subheader(f"Listagem de Lojas - {opcao_uf}")
+        st.subheader(f"Lista de Lojas: {opcao_uf}")
         st.dataframe(df_view[[col_loja, col_uf, col_fat, 'Performance', col_posicao]].sort_values(by=col_fat, ascending=False), use_container_width=True)
 
 else:
-    st.info("Aguardando upload do arquivo Excel...")
+    st.info("👋 Por favor, faça o upload do arquivo Excel para começar.")
