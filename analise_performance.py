@@ -15,37 +15,36 @@ if uploaded_file:
     # Lendo o arquivo
     df = pd.read_excel(uploaded_file)
     
-    # LIMPEZA CRÍTICA: Remove espaços extras no início ou fim dos nomes das colunas
+    # LIMPEZA: Remove espaços extras nos nomes das colunas
     df.columns = df.columns.astype(str).str.strip()
     
-    # MAPEAMENTO DAS COLUNAS (Ajustado para o seu arquivo)
+    # MAPEAMENTO DAS COLUNAS
     col_fat = "MÉDIA FATURAMENTO DE MAR'25 ATÉ FEV'26"
     col_uf = "UF"
     col_porte = "TAMANHO DA CIDADE"
     col_posicao = "POSIÇÃO DA LOJA"
     col_estacionamento = "ESTACIONAMENTO"
     col_loja = "LOJAS"
-    col_diretor = "DIRETOR"
 
-    # Verificação de segurança para evitar novos erros de KeyError
-    colunas_necessarias = [col_fat, col_uf, col_porte, col_posicao]
-    colunas_faltantes = [c for c in colunas_necessarias if c not in df.columns]
-
-    if colunas_faltantes:
-        st.error(f"⚠️ As seguintes colunas não foram encontradas: {colunas_faltantes}")
-        st.write("Colunas detectadas na sua planilha:", list(df.columns))
+    # Verificação de colunas
+    colunas_focais = [col_fat, col_uf, col_porte, col_posicao]
+    existentes = [c for c in colunas_focais if c in df.columns]
+    
+    if len(existentes) < len(colunas_focais):
+        faltantes = list(set(colunas_focais) - set(existentes))
+        st.error(f"⚠️ Colunas não encontradas: {faltantes}")
+        st.write("Colunas disponíveis:", list(df.columns))
     else:
-        # Criar coluna de Região básica
-        mapa_regioes = {'RS': 'Sul', 'SC': 'Sul', 'PR': 'Sul', 'SP': 'Sudeste', 'RJ': 'Sudeste'}
-        df['Região'] = df[col_uf].map(mapa_regioes).fillna('Outras Regiões')
-
         # --- BARRA LATERAL ---
         st.sidebar.header("⚙️ Parâmetros")
+        valor_min = float(df[col_fat].min())
+        valor_max = float(df[col_fat].max())
         media_faturamento = float(df[col_fat].mean())
+        
         meta_sucesso = st.sidebar.slider(
             "Régua de Alta Performance", 
-            min_value=float(df[col_fat].min()), 
-            max_value=float(df[col_fat].max()), 
+            min_value=valor_min, 
+            max_value=valor_max, 
             value=media_faturamento
         )
 
@@ -59,27 +58,33 @@ if uploaded_file:
             with col1:
                 st.subheader("Lojas por Estado")
                 fig_uf = px.histogram(df, x=col_uf, color="Performance", barmode="group",
-                                      color_discrete_map={'💎 Alta': '#27ae60', '📉 Comum': '#e74c3c'}, text_auto=True)
+                                      color_discrete_map={'💎 Alta': '#27ae60', '📉 Comum': '#e74c3c'}, 
+                                      text_auto=True)
                 st.plotly_chart(fig_uf, use_container_width=True)
             with col2:
                 st.subheader("Sucesso por Porte de Cidade")
-                fig_porte = px.histogram(df, x=col_porte, color="Performance", barmode="percent",
+                # CORREÇÃO AQUI: barmode="group" com barnorm="percent"
+                fig_porte = px.histogram(df, x=col_porte, color="Performance", 
+                                         barmode="group", barnorm="percent",
                                          color_discrete_map={'💎 Alta': '#27ae60', '📉 Comum': '#e74c3c'})
                 st.plotly_chart(fig_porte, use_container_width=True)
 
         with tab_dna:
+            st.subheader("Análise de Cruzamento")
             analise_alvo = st.selectbox("Analisar impacto de:", [col_posicao, col_estacionamento, col_porte])
+            
             fig_dna = px.box(df, x=analise_alvo, y=col_fat, color="Performance",
-                            color_discrete_map={'💎 Alta': '#27ae60', '📉 Comum': '#e74c3c'})
+                            color_discrete_map={'💎 Alta': '#27ae60', '📉 Comum': '#e74c3c'},
+                            points="all")
             st.plotly_chart(fig_dna, use_container_width=True)
             
             tops = df[df['Performance'] == '💎 Alta']
             if not tops.empty:
                 melhor_valor = tops[analise_alvo].mode()[0]
-                st.success(f"💡 Padrão de Sucesso: Lojas **{melhor_valor}** tendem a performar melhor em **{analise_alvo}**.")
+                st.success(f"💡 **DNA de Sucesso:** Lojas com característica **'{melhor_valor}'** dominam a categoria de Alta Performance em **{analise_alvo}**.")
 
         with tab_listagem:
-            st.dataframe(df[[col_loja, col_uf, col_fat, 'Performance']].sort_values(by=col_fat, ascending=False))
+            st.dataframe(df[[col_loja, col_uf, col_fat, 'Performance']].sort_values(by=col_fat, ascending=False), use_container_width=True)
 
 else:
-    st.info("Aguardando upload do arquivo...")
+    st.info("Aguardando upload do arquivo Excel para iniciar a análise.")
