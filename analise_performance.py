@@ -45,8 +45,11 @@ if uploaded_file:
         min_value=fat_min_data,
         max_value=fat_max_data,
         value=(fat_min_data, fat_max_data),
-        format="R$ {:,.2f}"
+        format="R$ {:,.0f}"
     )
+    
+    # EXIBIÇÃO DO VALOR SELECIONADO (O que você pediu)
+    st.sidebar.write(f"📊 **Selecionado:** R$ {faixa_faturamento[0]:,.0f} até R$ {faixa_faturamento[1]:,.0f}")
     
     # Aplicação final dos filtros
     df_view = df_filtrado[
@@ -70,12 +73,13 @@ if uploaded_file:
         st.metric("Total de Lojas", len(df_view))
     with c2:
         qtd_ruim = len(df_view[df_view['Performance'] == '🔴 Ruim'])
-        st.metric("Lojas 'Ruins'", qtd_ruim, help="Faturamento < 400k e DRE Negativo")
+        st.metric("Lojas 'Ruins'", qtd_ruim)
     with c3:
         qtd_baixa = len(df_view[df_view['Performance'] == '🟡 Baixa'])
-        st.metric("Lojas 'Baixas'", qtd_baixa, help="Faturamento < 400k e DRE Positivo")
+        st.metric("Lojas 'Baixas'", qtd_baixa)
     with c4:
-        st.metric("Faturamento Médio", f"R$ {df_view[col_fat].mean():,.2f}")
+        media_fat = df_view[col_fat].mean() if not df_view.empty else 0
+        st.metric("Faturamento Médio", f"R$ {media_fat:,.2f}")
 
     # --- ABAS DE ANÁLISE ---
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Tabela Detalhada (DRE)"])
@@ -97,10 +101,9 @@ if uploaded_file:
             st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
-        st.subheader("Análise de Padrões (Porcentagem)")
+        st.subheader("Análise de Padrões (Proporção)")
         analise_alvo = st.selectbox("Cruzar performance com:", [col_posicao, col_estacionamento, col_porte])
         
-        # CORREÇÃO DO ERRO: barmode="group" + barnorm="percent"
         fig_dna = px.histogram(df_view, x=analise_alvo, color="Performance", 
                                barmode="group", barnorm="percent",
                                color_discrete_map={'💎 Alta': '#27ae60', '🟡 Baixa': '#f1c40f', '🔴 Ruim': '#e74c3c'})
