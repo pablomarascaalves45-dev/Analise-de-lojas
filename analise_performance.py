@@ -22,10 +22,11 @@ if uploaded_file:
                 return col
         return nome_padrao
 
+    # Mapeamento ajustado para focar no Tamanho da Cidade
     col_fat = localizar_coluna(["FATURAMENTO", "MAR'25", "MÉDIA FATURAMENTO"], "MÉDIA FATURAMENTO DE MAR'25 ATÉ FEV'26")
     col_dre = localizar_coluna(["DRE_AC", "FEV/26"], "DRE_AC FEV/26")
     col_uf = localizar_coluna(["UF"], "UF")
-    col_porte = localizar_coluna(["TAMANHO", "CIDADE"], "TAMANHO DA CIDADE")
+    col_porte = localizar_coluna(["TAMANHO DA CIDADE", "TAMANHO", "PORTE"], "TAMANHO DA CIDADE")
     col_posicao = localizar_coluna(["POSIÇÃO", "POSICAO"], "POSIÇÃO DA LOJA")
     col_estacionamento = localizar_coluna(["ESTACIONAMENTO"], "ESTACIONAMENTO")
     col_loja = localizar_coluna(["LOJAS", "NOME"], "LOJAS")
@@ -36,6 +37,7 @@ if uploaded_file:
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
     df_filtrado_uf = df.copy() if opcao_uf == "Todos os Estados" else df[df[col_uf] == opcao_uf].copy()
 
+    # Tratamento de valores numéricos para evitar erros de cálculo
     df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce').fillna(0)
     fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
     faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
@@ -73,8 +75,9 @@ if uploaded_file:
         formatar_legenda('🔴 Ruim'): '#e74c3c'
     }
 
-    # Ordem de legenda dinâmica para evitar erro de chaves inexistentes
-    ordem_legenda = [formatar_legenda(p) for p in ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim'] if p in df_view['Performance_Base'].values]
+    # Ordem dinâmica para evitar erros caso uma categoria não exista no filtro
+    categorias_ordem = ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim']
+    ordem_legenda = [formatar_legenda(p) for p in categorias_ordem if p in df_view['Performance_Base'].values]
 
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
 
@@ -103,14 +106,13 @@ if uploaded_file:
         st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
-        st.subheader(f"DNA do Sucesso: Performance por Porte de Cidade ({opcao_uf})")
-        
-        analise_alvo = col_porte 
+        st.subheader(f"DNA do Sucesso: Melhores lojas por Tamanho de Cidade ({opcao_uf})")
         
         if not df_view.empty:
-            stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
-            totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
-            stats = stats.merge(totais, on=analise_alvo)
+            # Agrupamento focado no Tamanho da Cidade (Coluna L)
+            stats = df_view.groupby([col_porte, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
+            totais = df_view.groupby(col_porte).size().reset_index(name='total_grupo')
+            stats = stats.merge(totais, on=col_porte)
             stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
             
             stats['texto_barra'] = (
@@ -119,7 +121,7 @@ if uploaded_file:
                 ": " + stats['porcentagem'].astype(str) + "%"
             )
 
-            fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
+            fig_dna = px.bar(stats, x=col_porte, y='contagem', color='Performance',
                              barmode='group', text='texto_barra',
                              category_orders={"Performance": ordem_legenda},
                              color_discrete_map=cores_map,
@@ -139,20 +141,19 @@ if uploaded_file:
             )
             st.plotly_chart(fig_dna, use_container_width=True)
 
-            # INSIGHTS RÁPIDOS COM TRATAMENTO DE ERRO
+            # --- INSIGHTS DE MELHOR PORTE ---
             st.markdown("---")
-            filtro_sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
-            
-            if not filtro_sucesso.empty:
-                melhor_porte = filtro_sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
-                st.info(f"💡 No estado selecionado (**{opcao_uf}**), o porte de cidade com maior volume de lojas de alta performance é: **{melhor_porte}**")
+            sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
+            if not sucesso.empty:
+                melhor_porte = sucesso.groupby(col_porte)['contagem'].sum().idxmax()
+                st.info(f"💡 Em **{opcao_uf}**, o tamanho de cidade com as melhores lojas é: **{melhor_porte}**")
             else:
-                st.warning(f"⚠️ Não há lojas classificadas como 'Boa' ou 'Alta' nos filtros selecionados para o estado {opcao_uf}.")
+                st.warning("Não há lojas classificadas como 'Boa' ou 'Alta' neste estado/filtro.")
         else:
-            st.warning("Selecione um faturamento válido para visualizar a análise de DNA.")
+            st.warning("Sem dados para exibir na análise de DNA.")
 
     with tab_listagem:
-        st.dataframe(df_view[[col_loja, col_uf, col_porte, col_fat, col_dre, 'Performance']].sort_values(by=col_fat, ascending=False), use_container_width=True)
+        st.dataframe(df_view[[col_loja, col_uf, col_porte, col_fat, col_dre, 'Performance_Base']].sort_values(by=col_fat, ascending=False), use_container_width=True)
 
 else:
     st.info("👋 Por favor, carregue o arquivo para iniciar a análise.")
