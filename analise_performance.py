@@ -29,7 +29,6 @@ if uploaded_file:
     col_posicao = localizar_coluna(["POSIÇÃO", "POSICAO"], "POSIÇÃO DA LOJA")
     col_estacionamento = localizar_coluna(["ESTACIONAMENTO"], "ESTACIONAMENTO")
     col_loja = localizar_coluna(["LOJAS", "NOME"], "LOJAS")
-    col_id_cidade = localizar_coluna(["ID_CIDADE", "CIDADE_ID"], "ID_CIDADE")
 
     # --- FILTROS ---
     st.sidebar.header("⚙️ Filtros")
@@ -47,7 +46,7 @@ if uploaded_file:
     )
 
     df_view = df_filtrado_uf[
-        (df_filtrado_uf[col_fat] >= faixa_fat[0]) &
+        (df_filtrado_uf[col_fat] >= faixa_fat[0]) & 
         (df_filtrado_uf[col_fat] <= faixa_fat[1])
     ].copy()
 
@@ -106,35 +105,19 @@ if uploaded_file:
         )
 
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
-
         fig_scat.update_layout(
             legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
             xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
             yaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14))
         )
-
         st.plotly_chart(fig_scat, use_container_width=True)
 
     # ---------------- DNA ----------------
     with tab_dna:
-        st.subheader("Análise Detalhada por Perfil")
+        st.subheader("Análise Detalhada por Perfil de Cidade")
 
-        # 🔥 CRIA FAIXAS DE TAMANHO DA CIDADE
-        df_view['FAIXA_CIDADE'] = pd.cut(
-            df_view[col_porte],
-            bins=[0, 20000, 30000, 50000, 100000, 150000, 300000, 1000000],
-            labels=[
-                "Até 20k",
-                "Entre 20k e 30k",
-                "Entre 30k e 50k",
-                "Entre 50k e 100k",
-                "Entre 100k e 150k",
-                "Entre 150k e 300k",
-                "Acima de 300k"
-            ]
-        )
-
-        analise_alvo = 'FAIXA_CIDADE'
+        # Usando diretamente a coluna original para garantir que pegue todos os tamanhos da Coluna L
+        analise_alvo = col_porte 
 
         stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
         totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
@@ -148,16 +131,6 @@ if uploaded_file:
             ": " + stats['porcentagem'].astype(str) + "%"
         )
 
-        ordem_faixas = [
-            "Até 20k",
-            "Entre 20k e 30k",
-            "Entre 30k e 50k",
-            "Entre 50k e 100k",
-            "Entre 100k e 150k",
-            "Entre 150k e 300k",
-            "Acima de 300k"
-        ]
-
         fig_dna = px.bar(
             stats,
             x=analise_alvo,
@@ -165,10 +138,7 @@ if uploaded_file:
             color='Performance',
             barmode='group',
             text='texto_barra',
-            category_orders={
-                "Performance": ordem_legenda,
-                "FAIXA_CIDADE": ordem_faixas
-            },
+            category_orders={"Performance": ordem_legenda},
             color_discrete_map=cores_map,
             height=650
         )
@@ -182,33 +152,32 @@ if uploaded_file:
         fig_dna.update_layout(
             legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
             xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
-            yaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
+            yaxis=dict(title="Qtd de Lojas", tickfont=dict(size=14)),
             margin=dict(t=50)
         )
 
         st.plotly_chart(fig_dna, use_container_width=True)
 
-        # 🚀 INSIGHT POR PORTE
-        resumo = df_view.groupby('FAIXA_CIDADE').agg(
+        # 🚀 INSIGHT POR PORTE (Identificando maior amostragem de lojas boas)
+        resumo = df_view.groupby(analise_alvo).agg(
             total_lojas=(col_loja, "count"),
-            lojas_boas=('Performance_Base', lambda x: (x.isin(['💎 Boa', '🔵 Alta'])).sum()),
+            lojas_boas_alta=('Performance_Base', lambda x: (x.isin(['💎 Boa', '🔵 Alta'])).sum()),
             lojas_ruins=('Performance_Base', lambda x: (x == '🔴 Ruim').sum())
         ).reset_index()
 
-        resumo['score_expansao'] = (resumo['lojas_boas'] - resumo['lojas_ruins'])
-        resumo = resumo.sort_values(by="score_expansao", ascending=False)
+        resumo['percentual_sucesso'] = (resumo['lojas_boas_alta'] / resumo['total_lojas'] * 100).round(1)
+        resumo = resumo.sort_values(by="lojas_boas_alta", ascending=False)
 
-        st.markdown("### 🧠 Melhor porte de cidades")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.success("🚀 Melhor perfil para expandir")
-            st.dataframe(resumo.head(5))
-
-        with col2:
-            st.error("⚠️ Piores perfis")
-            st.dataframe(resumo.tail(5))
+        st.markdown("### 🧠 Insights de Expansão por Porte")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.success("🏆 Porte com maior quantidade de lojas 'Boa/Alta'")
+            st.dataframe(resumo[['TAMANHO DA CIDADE', 'total_lojas', 'lojas_boas_alta', 'percentual_sucesso']].head(5))
+        
+        with c2:
+            st.info("📊 Melhores taxas de conversão (Eficiência)")
+            st.dataframe(resumo.sort_values(by='percentual_sucesso', ascending=False).head(5))
 
     # ---------------- LISTAGEM ----------------
     with tab_listagem:
@@ -219,4 +188,4 @@ if uploaded_file:
         )
 
 else:
-    st.info("👋 Por favor, carregue o arquivo.")
+    st.info("👋 Por favor, carregue o arquivo para iniciar a análise.")
