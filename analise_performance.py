@@ -119,10 +119,22 @@ if uploaded_file:
     with tab_dna:
         st.subheader("Análise Detalhada por Perfil")
 
-        analise_alvo = st.selectbox(
-            "Analisar por:",
-            [col_porte, col_posicao, col_estacionamento, col_id_cidade]
+        # 🔥 CRIA FAIXAS DE TAMANHO DA CIDADE
+        df_view['FAIXA_CIDADE'] = pd.cut(
+            df_view[col_porte],
+            bins=[0, 20000, 30000, 50000, 100000, 150000, 300000, 1000000],
+            labels=[
+                "Até 20k",
+                "Entre 20k e 30k",
+                "Entre 30k e 50k",
+                "Entre 50k e 100k",
+                "Entre 100k e 150k",
+                "Entre 150k e 300k",
+                "Acima de 300k"
+            ]
         )
+
+        analise_alvo = 'FAIXA_CIDADE'
 
         stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
         totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
@@ -136,6 +148,16 @@ if uploaded_file:
             ": " + stats['porcentagem'].astype(str) + "%"
         )
 
+        ordem_faixas = [
+            "Até 20k",
+            "Entre 20k e 30k",
+            "Entre 30k e 50k",
+            "Entre 50k e 100k",
+            "Entre 100k e 150k",
+            "Entre 150k e 300k",
+            "Acima de 300k"
+        ]
+
         fig_dna = px.bar(
             stats,
             x=analise_alvo,
@@ -143,7 +165,10 @@ if uploaded_file:
             color='Performance',
             barmode='group',
             text='texto_barra',
-            category_orders={"Performance": ordem_legenda},
+            category_orders={
+                "Performance": ordem_legenda,
+                "FAIXA_CIDADE": ordem_faixas
+            },
             color_discrete_map=cores_map,
             height=650
         )
@@ -163,8 +188,8 @@ if uploaded_file:
 
         st.plotly_chart(fig_dna, use_container_width=True)
 
-        # 🚀 NOVO INSIGHT (PORTE DE CIDADE)
-        resumo = df_view.groupby(col_porte).agg(
+        # 🚀 INSIGHT POR PORTE
+        resumo = df_view.groupby('FAIXA_CIDADE').agg(
             total_lojas=(col_loja, "count"),
             lojas_boas=('Performance_Base', lambda x: (x.isin(['💎 Boa', '🔵 Alta'])).sum()),
             lojas_ruins=('Performance_Base', lambda x: (x == '🔴 Ruim').sum())
