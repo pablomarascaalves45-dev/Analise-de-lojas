@@ -12,10 +12,7 @@ st.markdown("---")
 uploaded_file = st.file_uploader("📂 Suba a base de dados das lojas (Excel)", type=['xlsx'])
 
 if uploaded_file:
-    # Lendo o arquivo (suporta o formato enviado)
     df = pd.read_excel(uploaded_file)
-    
-    # Limpeza de nomes de colunas para evitar erros de espaços
     df.columns = [str(c).strip() for c in df.columns]
     
     # --- MAPEAMENTO DINÂMICO DE COLUNAS ---
@@ -35,37 +32,54 @@ if uploaded_file:
 
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.header("⚙️ Filtros")
-    
-    # Filtro de Estado
     ufs = sorted(df[col_uf].dropna().unique().tolist())
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
     df_filtrado_uf = df.copy() if opcao_uf == "Todos os Estados" else df[df[col_uf] == opcao_uf].copy()
 
-    # Filtro de Faturamento
     df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce').fillna(0)
     fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
-    
     faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
     
     df_view = df_filtrado_uf[
         (df_filtrado_uf[col_fat] >= faixa_fat[0]) & (df_filtrado_uf[col_fat] <= faixa_fat[1])
     ].copy()
 
-    # --- LÓGICA DE PERFORMANCE ---
+    # --- LÓGICA DE PERFORMANCE ATUALIZADA ---
     def classificar(row):
         f = row[col_fat]
         d = row[col_dre] if col_dre in df.columns else 0
-        if f < 400000:
+        if f >= 1000000:
+            return '🔵 Alta'
+        elif f >= 400000:
+            return '💎 Boa'
+        else:
             return '🔴 Ruim' if d < 0 else '🟡 Baixa'
-        return '💎 Alta'
 
-    df_view['Performance'] = df_view.apply(classificar, axis=1)
+    df_view['Performance_Base'] = df_view.apply(classificar, axis=1)
+
+    # --- CÁLCULO DE CONTAGEM PARA A LEGENDA ---
+    contagem_perf = df_view['Performance_Base'].value_counts()
+    
+    def formatar_legenda(perf_base):
+        qtd = contagem_perf.get(perf_base, 0)
+        # Remove o emoji para a parte do texto solicitado "Alta = 30 lojas"
+        texto = perf_base.split(" ")[1] 
+        return f"{perf_base} = {qtd} lojas"
+
+    df_view['Performance'] = df_view['Performance_Base'].apply(formatar_legenda)
+
+    # Mapa de cores para as novas categorias
+    cores_map = {
+        formatar_legenda('🔵 Alta'): '#0000FF', # Azul
+        formatar_legenda('💎 Boa'): '#27ae60',  # Verde
+        formatar_legenda('🟡 Baixa'): '#f1c40f', # Amarelo
+        formatar_legenda('🔴 Ruim'): '#e74c3c'   # Vermelho
+    }
 
     # --- ABAS ---
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
 
     with tab_geo:
-        # --- NOVOS INDICADORES SOLICITADOS ---
         st.subheader("Indicadores de Resumo")
         kpi1, kpi2, kpi3 = st.columns(3)
         
@@ -79,9 +93,14 @@ if uploaded_file:
         
         st.markdown("---")
         st.subheader("Dispersão: Faturamento vs DRE")
+        
+        # Ordenação manual para a legenda ficar organizada
+        ordem_legenda = [formatar_legenda(p) for p in ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim'] if p in df_view['Performance_Base'].values]
+
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
                              hover_name=col_loja,
-                             color_discrete_map={'💎 Alta': '#27ae60', '🟡 Baixa': '#f1c40f', '🔴 Ruim': '#e74c3c'})
+                             category_orders={"Performance": ordem_legenda},
+                             color_discrete_map=cores_map)
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
         st.plotly_chart(fig_scat, use_container_width=True)
 
@@ -89,22 +108,22 @@ if uploaded_file:
         st.subheader("Análise Detalhada por Perfil")
         analise_alvo = st.selectbox("Analisar por:", [col_porte, col_posicao, col_estacionamento])
         
-        # --- CÁLCULO DOS RÓTULOS (TOTAL + PERCENTUAL) ---
-        stats = df_view.groupby([analise_alvo, 'Performance']).size().reset_index(name='contagem')
+        stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
         totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
         stats = stats.merge(totais, on=analise_alvo)
         stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
         
-        # Formatação do texto conforme solicitado
+        # Texto da barra simplificado (mantendo originalidade do visual)
         stats['texto_barra'] = (
             "Total: " + stats['total_grupo'].astype(str) + "<br>" +
-            stats['Performance'].str.replace("💎 ", "").str.replace("🔴 ", "").str.replace("🟡 ", "") + 
+            stats['Performance_Base'].str.split(" ").str[1] + 
             ": " + stats['porcentagem'].astype(str) + "%"
         )
 
         fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
                          barmode='group', text='texto_barra',
-                         color_discrete_map={'💎 Alta': '#27ae60', '🟡 Baixa': '#f1c40f', '🔴 Ruim': '#e74c3c'})
+                         category_orders={"Performance": ordem_legenda},
+                         color_discrete_map=cores_map)
         
         fig_dna.update_traces(textposition='outside', textfont_size=10)
         fig_dna.update_layout(yaxis_title="Qtd de Lojas", xaxis_title=analise_alvo)
