@@ -128,11 +128,6 @@ if uploaded_file:
         totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
         stats = stats.merge(totais, on=analise_alvo)
 
-        # 🔥 Top cidades
-        if analise_alvo == col_id_cidade:
-            top_cidades = totais.sort_values(by="total_grupo", ascending=False).head(15)[analise_alvo]
-            stats = stats[stats[analise_alvo].isin(top_cidades)]
-
         stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
 
         stats['texto_barra'] = (
@@ -166,33 +161,29 @@ if uploaded_file:
             margin=dict(t=50)
         )
 
-        if analise_alvo == col_id_cidade:
-            fig_dna.update_layout(xaxis_tickangle=-45)
-
         st.plotly_chart(fig_dna, use_container_width=True)
 
-        # 🚀 INSIGHT AUTOMÁTICO
-        if analise_alvo == col_id_cidade:
-            resumo = df_view.groupby(col_id_cidade).agg(
-                total_lojas=(col_loja, "count"),
-                lojas_boas=('Performance_Base', lambda x: (x.isin(['💎 Boa', '🔵 Alta'])).sum()),
-                lojas_ruins=('Performance_Base', lambda x: (x == '🔴 Ruim').sum())
-            ).reset_index()
+        # 🚀 NOVO INSIGHT (PORTE DE CIDADE)
+        resumo = df_view.groupby(col_porte).agg(
+            total_lojas=(col_loja, "count"),
+            lojas_boas=('Performance_Base', lambda x: (x.isin(['💎 Boa', '🔵 Alta'])).sum()),
+            lojas_ruins=('Performance_Base', lambda x: (x == '🔴 Ruim').sum())
+        ).reset_index()
 
-            resumo['score_expansao'] = (resumo['lojas_boas'] - resumo['lojas_ruins'])
-            resumo = resumo.sort_values(by="score_expansao", ascending=False)
+        resumo['score_expansao'] = (resumo['lojas_boas'] - resumo['lojas_ruins'])
+        resumo = resumo.sort_values(by="score_expansao", ascending=False)
 
-            st.markdown("### 🧠 Ranking Inteligente de Expansão")
+        st.markdown("### 🧠 Melhor porte de cidades")
 
-            col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
 
-            with col1:
-                st.success("🚀 Expandir")
-                st.dataframe(resumo.head(5))
+        with col1:
+            st.success("🚀 Melhor perfil para expandir")
+            st.dataframe(resumo.head(5))
 
-            with col2:
-                st.error("⚠️ Risco")
-                st.dataframe(resumo.tail(5))
+        with col2:
+            st.error("⚠️ Piores perfis")
+            st.dataframe(resumo.tail(5))
 
     # ---------------- LISTAGEM ----------------
     with tab_listagem:
