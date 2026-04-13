@@ -65,6 +65,19 @@ if uploaded_file:
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
 
     with tab_geo:
+        # --- NOVOS INDICADORES SOLICITADOS ---
+        st.subheader("Indicadores de Resumo")
+        kpi1, kpi2, kpi3 = st.columns(3)
+        
+        total_lojas = len(df_view)
+        acima_400k = len(df_view[df_view[col_fat] >= 400000])
+        negativas = len(df_view[df_view[col_dre] < 0])
+        
+        kpi1.metric("Qtd. Total de Lojas", total_lojas)
+        kpi2.metric("Vendas > R$ 400k", acima_400k)
+        kpi3.metric("Lojas com DRE Negativo", negativas)
+        
+        st.markdown("---")
         st.subheader("Dispersão: Faturamento vs DRE")
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
                              hover_name=col_loja,
