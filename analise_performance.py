@@ -95,7 +95,6 @@ if uploaded_file:
         
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
         
-        # AUMENTO DE FONTE NA LEGENDA E EIXOS
         fig_scat.update_layout(
             legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
             xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
@@ -112,30 +111,35 @@ if uploaded_file:
         stats = stats.merge(totais, on=analise_alvo)
         stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
         
+        # Uso de tags HTML para garantir o negrito e clareza no texto
         stats['texto_barra'] = (
             "<b>Total: " + stats['total_grupo'].astype(str) + "</b><br>" +
-            stats['Performance_Base'].str.split(" ").str[1] + 
-            ": " + stats['porcentagem'].astype(str) + "%"
+            "<b>" + stats['Performance_Base'].str.split(" ").str[1] + "</b>: " + 
+            stats['porcentagem'].astype(str) + "%"
         )
 
         fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
                          barmode='group', text='texto_barra',
                          category_orders={"Performance": ordem_legenda},
                          color_discrete_map=cores_map,
-                         height=650)
+                         height=700) # Aumentado para dar mais folga vertical
         
-        # AJUSTE PARA CAIXA DE TEXTO MAIOR E LEITURA MELHORADA
+        # --- AJUSTES DE TAMANHO DO TEXTO DAS BARRAS ---
         fig_dna.update_traces(
             textposition='outside', 
-            textfont=dict(size=14, color="black"), # Aumento da fonte sobre a barra
-            cliponaxis=False
+            textfont=dict(
+                size=18, # Aumentado consideravelmente para facilitar leitura
+                color="black",
+                family="Arial Black" # Fonte mais robusta
+            ),
+            cliponaxis=False # Garante que o texto não suma se sair do limite do gráfico
         )
         
         fig_dna.update_layout(
             legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
-            xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
-            yaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
-            margin=dict(t=50) # Mais espaço no topo para o texto não cortar
+            xaxis=dict(title=dict(font=dict(size=18), color="black"), tickfont=dict(size=16)),
+            yaxis=dict(title=dict(font=dict(size=18)), tickfont=dict(size=14)),
+            margin=dict(t=100, b=50) # Margem superior maior (t=100) para o texto não ser cortado
         )
         st.plotly_chart(fig_dna, use_container_width=True)
 
