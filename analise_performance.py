@@ -62,46 +62,45 @@ if uploaded_file:
     
     def formatar_legenda(perf_base):
         qtd = contagem_perf.get(perf_base, 0)
-        # Remove o emoji para a parte do texto solicitado "Alta = 30 lojas"
-        texto = perf_base.split(" ")[1] 
         return f"{perf_base} = {qtd} lojas"
 
     df_view['Performance'] = df_view['Performance_Base'].apply(formatar_legenda)
 
-    # Mapa de cores para as novas categorias
     cores_map = {
-        formatar_legenda('🔵 Alta'): '#0000FF', # Azul
-        formatar_legenda('💎 Boa'): '#27ae60',  # Verde
-        formatar_legenda('🟡 Baixa'): '#f1c40f', # Amarelo
-        formatar_legenda('🔴 Ruim'): '#e74c3c'   # Vermelho
+        formatar_legenda('🔵 Alta'): '#0000FF',
+        formatar_legenda('💎 Boa'): '#27ae60',
+        formatar_legenda('🟡 Baixa'): '#f1c40f',
+        formatar_legenda('🔴 Ruim'): '#e74c3c'
     }
 
-    # --- ABAS ---
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
 
     with tab_geo:
         st.subheader("Indicadores de Resumo")
         kpi1, kpi2, kpi3 = st.columns(3)
-        
-        total_lojas = len(df_view)
-        acima_400k = len(df_view[df_view[col_fat] >= 400000])
-        negativas = len(df_view[df_view[col_dre] < 0])
-        
-        kpi1.metric("Qtd. Total de Lojas", total_lojas)
-        kpi2.metric("Vendas > R$ 400k", acima_400k)
-        kpi3.metric("Lojas com DRE Negativo", negativas)
+        kpi1.metric("Qtd. Total de Lojas", len(df_view))
+        kpi2.metric("Vendas > R$ 400k", len(df_view[df_view[col_fat] >= 400000]))
+        kpi3.metric("Lojas com DRE Negativo", len(df_view[df_view[col_dre] < 0]))
         
         st.markdown("---")
         st.subheader("Dispersão: Faturamento vs DRE")
         
-        # Ordenação manual para a legenda ficar organizada
         ordem_legenda = [formatar_legenda(p) for p in ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim'] if p in df_view['Performance_Base'].values]
 
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
                              hover_name=col_loja,
                              category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map)
+                             color_discrete_map=cores_map,
+                             height=600)
+        
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
+        
+        # AUMENTO DE FONTE NA LEGENDA E EIXOS
+        fig_scat.update_layout(
+            legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
+            xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
+            yaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14))
+        )
         st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
@@ -113,9 +112,8 @@ if uploaded_file:
         stats = stats.merge(totais, on=analise_alvo)
         stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
         
-        # Texto da barra simplificado (mantendo originalidade do visual)
         stats['texto_barra'] = (
-            "Total: " + stats['total_grupo'].astype(str) + "<br>" +
+            "<b>Total: " + stats['total_grupo'].astype(str) + "</b><br>" +
             stats['Performance_Base'].str.split(" ").str[1] + 
             ": " + stats['porcentagem'].astype(str) + "%"
         )
@@ -123,14 +121,26 @@ if uploaded_file:
         fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
                          barmode='group', text='texto_barra',
                          category_orders={"Performance": ordem_legenda},
-                         color_discrete_map=cores_map)
+                         color_discrete_map=cores_map,
+                         height=650)
         
-        fig_dna.update_traces(textposition='outside', textfont_size=10)
-        fig_dna.update_layout(yaxis_title="Qtd de Lojas", xaxis_title=analise_alvo)
+        # AJUSTE PARA CAIXA DE TEXTO MAIOR E LEITURA MELHORADA
+        fig_dna.update_traces(
+            textposition='outside', 
+            textfont=dict(size=14, color="black"), # Aumento da fonte sobre a barra
+            cliponaxis=False
+        )
+        
+        fig_dna.update_layout(
+            legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
+            xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
+            yaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
+            margin=dict(t=50) # Mais espaço no topo para o texto não cortar
+        )
         st.plotly_chart(fig_dna, use_container_width=True)
 
     with tab_listagem:
-        st.dataframe(df_view[[col_loja, col_uf, col_fat, col_dre, 'Performance']].sort_values(by=col_fat, ascending=False))
+        st.dataframe(df_view[[col_loja, col_uf, col_fat, col_dre, 'Performance']].sort_values(by=col_fat, ascending=False), use_container_width=True)
 
 else:
     st.info("👋 Por favor, carregue o arquivo 'Teste de lojas.xlsx'.")
