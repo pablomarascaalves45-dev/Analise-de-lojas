@@ -1,6 +1,7 @@
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from datetime import datetime
 
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Analytics Expansão - DNA de Sucesso", layout="wide")
@@ -13,7 +14,6 @@ uploaded_file = st.file_uploader("📂 Suba a base de dados das lojas (Excel)", 
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    # Limpa espaços em branco nos nomes das colunas
     df.columns = [str(c).strip() for c in df.columns]
     
     # --- MAPEAMENTO DINÂMICO DE COLUNAS ---
@@ -23,7 +23,6 @@ if uploaded_file:
                 return col
         return nome_padrao
 
-    # Mapeamento ajustado
     col_fat = localizar_coluna(["FATURAMENTO", "MAR'25", "MÉDIA FATURAMENTO", "SOMA DAS VENDAS"], "MÉDIA FATURAMENTO")
     col_dre = localizar_coluna(["DRE_AC", "FEV/26", "DRE FEV", "DRE ACUMULADO"], "DRE_AC FEV/26")
     col_uf = localizar_coluna(["UF", "ESTADO"], "UF")
@@ -31,14 +30,23 @@ if uploaded_file:
     col_posicao = localizar_coluna(["POSIÇÃO", "POSICAO"], "POSIÇÃO DA LOJA")
     col_estacionamento = localizar_coluna(["ESTACIONAMENTO"], "ESTACIONAMENTO")
     col_loja = localizar_coluna(["LOJAS", "NOME", "ID_LOJA"], "LOJAS")
+    col_abertura = localizar_coluna(["DATA DE ABERTURA", "ABERTURA"], "DATA DE ABERTURA")
+    col_localizacao = localizar_coluna(["BAIRRO OU CENTRO", "LOCALIZACAO", "CENTRO"], "BAIRRO OU CENTRO")
 
+    # --- TRATAMENTO DE NOVAS VARIÁVEIS (IDADE E LOCAL) ---
+    # Cálculo da Idade
+    if col_abertura in df.columns:
+        df[col_abertura] = pd.to_datetime(df[col_abertura], errors='coerce')
+        hoje = datetime.now()
+        df['IDADE_LOJA'] = df[col_abertura].apply(lambda x: hoje.year - x.year if pd.notnull(x) else 0)
+    
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.header("⚙️ Filtros")
     ufs = sorted(df[col_uf].dropna().unique().tolist())
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
     df_filtrado_uf = df.copy() if opcao_uf == "Todos os Estados" else df[df[col_uf] == opcao_uf].copy()
 
-    # Tratamento numérico para faturamento e DRE
+    # Tratamento numérico
     df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce').fillna(0)
     df_filtrado_uf[col_dre] = pd.to_numeric(df_filtrado_uf[col_dre], errors='coerce').fillna(0)
     
@@ -66,8 +74,7 @@ if uploaded_file:
         return f"{perf_base} = {qtd} lojas"
 
     df_view['Performance'] = df_view['Performance_Base'].apply(formatar_legenda)
-    categorias_ordem = ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim']
-    ordem_legenda = [formatar_legenda(p) for p in categorias_ordem if p in df_view['Performance_Base'].values]
+    ordem_legenda = [formatar_legenda(p) for p in ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim'] if p in df_view['Performance_Base'].values]
 
     cores_map = {
         formatar_legenda('🔵 Alta'): '#0000FF',
@@ -84,7 +91,6 @@ if uploaded_file:
         k1, k2, k3 = st.columns(3)
         k1.metric("Total Lojas", len(df_view))
         k2.metric("Faturamento > 400k", len(df_view[df_view[col_fat] >= 400000]))
-        # KPI de DRE Médio do Grupo
         dre_medio = df_view[col_dre].mean()
         k3.metric("DRE Médio", f"{dre_medio*100:.2f}%")
 
@@ -92,13 +98,14 @@ if uploaded_file:
                              hover_name=col_loja, category_orders={"Performance": ordem_legenda},
                              color_discrete_map=cores_map, height=500,
                              labels={col_fat: "Faturamento Médio", col_dre: "DRE Acumulado %"})
-        
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
         st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
-        st.subheader("🧬 Análise de Variáveis")
-        opcoes_dna = [c for c in [col_porte, col_posicao, col_estacionamento] if c in df.columns]
+        st.subheader("🧬 Análise de Variáveis de Sucesso")
+        
+        # Lista de opções atualizada com Bairro/Centro
+        opcoes_dna = [c for c in [col_porte, col_posicao, col_estacionamento, col_localizacao] if c in df.columns]
         analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
@@ -118,6 +125,7 @@ if uploaded_file:
             fig_dna.update_traces(textposition='outside', textfont=dict(size=12, color="black"))
             st.plotly_chart(fig_dna, use_container_width=True)
 
+            # Insight Dinâmico
             sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
             if not sucesso.empty:
                 melhor = sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
@@ -125,18 +133,17 @@ if uploaded_file:
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
-        # Seleção e formatação das colunas para a tabela final
-        cols_final = [col_loja, col_uf, col_porte, col_posicao, col_estacionamento, col_fat, col_dre, 'Performance_Base']
+        # Incluindo IDADE_LOJA e LOCALIZAÇÃO na tabela
+        cols_final = [col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_posicao, col_fat, col_dre, 'Performance_Base']
         df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
         
-        # Ordenar por faturamento
         df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
         
-        # Estilização para o Streamlit
         st.dataframe(
             df_tabela.style.format({
                 col_fat: "R$ {:,.2f}",
-                col_dre: "{:.2%}"
+                col_dre: "{:.2%}",
+                'IDADE_LOJA': "{:.0f} anos"
             }), 
             use_container_width=True
         )
