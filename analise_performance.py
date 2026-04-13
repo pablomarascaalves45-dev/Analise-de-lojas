@@ -5,106 +5,100 @@ import streamlit as st
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Analytics Expansão - DNA de Sucesso", layout="wide")
 
-st.title("🎯 Inteligência de Performance: O que faz uma loja vender mais?")
+st.title("🎯 Inteligência de Performance: DNA de Sucesso")
 st.markdown("---")
 
 # 2. UPLOAD E TRATAMENTO DE DADOS
 uploaded_file = st.file_uploader("📂 Suba a base de dados das lojas (Excel)", type=['xlsx'])
 
 if uploaded_file:
+    # Lendo o arquivo (suporta o formato enviado)
     df = pd.read_excel(uploaded_file)
     
-    # Limpeza profunda: remove espaços no início/fim e garante que tudo é string
+    # Limpeza de nomes de colunas para evitar erros de espaços
     df.columns = [str(c).strip() for c in df.columns]
     
-    # --- MAPEAMENTO AUTOMÁTICO PARA EVITAR KEYERROR ---
-    # Tentamos encontrar as colunas por palavras-chave caso o nome exato falhe
-    def encontrar_coluna(lista_keywords, default_name):
+    # --- MAPEAMENTO DINÂMICO DE COLUNAS ---
+    def localizar_coluna(lista_termos, nome_padrao):
         for col in df.columns:
-            if any(key.upper() in col.upper() for key in lista_keywords):
+            if any(termo.upper() in col.upper() for termo in lista_termos):
                 return col
-        return default_name
+        return nome_padrao
 
-    col_fat = encontrar_coluna(["FATURAMENTO", "MAR'25", "FEV'26"], "MÉDIA FATURAMENTO DE MAR'25 ATÉ FEV'26")
-    col_dre = encontrar_coluna(["DRE_AC", "FEV/26"], "DRE_AC FEV/26")
-    col_uf = encontrar_coluna(["UF", "ESTADO"], "UF")
-    col_porte = encontrar_coluna(["TAMANHO", "PORTE", "CIDADE"], "TAMANHO DA CIDADE")
-    col_posicao = encontrar_coluna(["POSIÇÃO", "POSICAO"], "POSIÇÃO DA LOJA")
-    col_estacionamento = encontrar_coluna(["ESTACIONAMENTO"], "ESTACIONAMENTO")
-    col_loja = encontrar_coluna(["LOJAS", "NOME"], "LOJAS")
-
-    # Verificação de segurança: Se a coluna de faturamento não existir mesmo após a busca
-    if col_fat not in df.columns:
-        st.error(f"❌ Não encontrei a coluna de Faturamento. Verifique se o nome no Excel é parecido com: {col_fat}")
-        st.stop()
+    col_fat = localizar_coluna(["FATURAMENTO", "MAR'25"], "MÉDIA FATURAMENTO DE MAR'25 ATÉ FEV'26")
+    col_dre = localizar_coluna(["DRE_AC", "FEV/26"], "DRE_AC FEV/26")
+    col_uf = localizar_coluna(["UF"], "UF")
+    col_porte = localizar_coluna(["TAMANHO", "CIDADE"], "TAMANHO DA CIDADE")
+    col_posicao = localizar_coluna(["POSIÇÃO", "POSICAO"], "POSIÇÃO DA LOJA")
+    col_estacionamento = localizar_coluna(["ESTACIONAMENTO"], "ESTACIONAMENTO")
+    col_loja = localizar_coluna(["LOJAS", "NOME"], "LOJAS")
 
     # --- BARRA LATERAL (FILTROS) ---
-    st.sidebar.header("⚙️ Filtros de Visualização")
+    st.sidebar.header("⚙️ Filtros")
     
-    lista_ufs = sorted(df[col_uf].dropna().unique().tolist())
-    opcao_uf = st.sidebar.selectbox("Selecione o Estado:", ["Todos os Estados"] + lista_ufs)
-    
+    # Filtro de Estado
+    ufs = sorted(df[col_uf].dropna().unique().tolist())
+    opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
     df_filtrado_uf = df.copy() if opcao_uf == "Todos os Estados" else df[df[col_uf] == opcao_uf].copy()
 
-    # Filtro de Faturamento com tratamento para valores nulos
+    # Filtro de Faturamento
     df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce').fillna(0)
+    fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
     
-    fat_min_data = float(df_filtrado_uf[col_fat].min())
-    fat_max_data = float(df_filtrado_uf[col_fat].max())
-    
-    faixa_faturamento = st.sidebar.slider(
-        "Filtrar por Faixa de Faturamento:",
-        min_value=fat_min_data,
-        max_value=fat_max_data,
-        value=(fat_min_data, fat_max_data),
-        format="R$ {:,.0f}"
-    )
-    
-    st.sidebar.info(f"📍 **Filtrado:** R$ {faixa_faturamento[0]:,.0f} a R$ {faixa_faturamento[1]:,.0f}")
+    faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
     
     df_view = df_filtrado_uf[
-        (df_filtrado_uf[col_fat] >= faixa_faturamento[0]) & 
-        (df_filtrado_uf[col_fat] <= faixa_faturamento[1])
+        (df_filtrado_uf[col_fat] >= faixa_fat[0]) & (df_filtrado_uf[col_fat] <= faixa_fat[1])
     ].copy()
 
-    # --- LÓGICA DE CLASSIFICAÇÃO ---
-    def classificar_performance(row):
-        faturamento = row[col_fat]
-        dre = row[col_dre] if col_dre in df.columns else 0
-        if faturamento < 400000:
-            return '🔴 Ruim' if dre < 0 else '🟡 Baixa'
+    # --- LÓGICA DE PERFORMANCE ---
+    def classificar(row):
+        f = row[col_fat]
+        d = row[col_dre] if col_dre in df.columns else 0
+        if f < 400000:
+            return '🔴 Ruim' if d < 0 else '🟡 Baixa'
         return '💎 Alta'
 
-    df_view['Performance'] = df_view.apply(classificar_performance, axis=1)
+    df_view['Performance'] = df_view.apply(classificar, axis=1)
 
     # --- ABAS ---
-    tab_geo, tab_dna, tab_diagnostico, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "🧠 Diagnóstico", "📋 Tabela"])
+    tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
+
+    with tab_geo:
+        st.subheader("Dispersão: Faturamento vs DRE")
+        fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
+                             hover_name=col_loja,
+                             color_discrete_map={'💎 Alta': '#27ae60', '🟡 Baixa': '#f1c40f', '🔴 Ruim': '#e74c3c'})
+        fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
+        st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
         st.subheader("Análise Detalhada por Perfil")
-        analise_alvo = st.selectbox("Escolha o critério:", [col_porte, col_posicao, col_estacionamento])
+        analise_alvo = st.selectbox("Analisar por:", [col_porte, col_posicao, col_estacionamento])
         
-        # Cálculo de estatísticas para os rótulos
+        # --- CÁLCULO DOS RÓTULOS (TOTAL + PERCENTUAL) ---
         stats = df_view.groupby([analise_alvo, 'Performance']).size().reset_index(name='contagem')
         totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
         stats = stats.merge(totais, on=analise_alvo)
         stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
         
-        stats['texto_rotulo'] = (
+        # Formatação do texto conforme solicitado
+        stats['texto_barra'] = (
             "Total: " + stats['total_grupo'].astype(str) + "<br>" +
-            stats['Performance'].str.extract(r'(\w+)', expand=False) + ": " + stats['porcentagem'].astype(str) + "%"
+            stats['Performance'].str.replace("💎 ", "").str.replace("🔴 ", "").str.replace("🟡 ", "") + 
+            ": " + stats['porcentagem'].astype(str) + "%"
         )
 
         fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
-                         barmode='group', text='texto_rotulo',
+                         barmode='group', text='texto_barra',
                          color_discrete_map={'💎 Alta': '#27ae60', '🟡 Baixa': '#f1c40f', '🔴 Ruim': '#e74c3c'})
         
-        fig_dna.update_traces(textposition='outside')
+        fig_dna.update_traces(textposition='outside', textfont_size=10)
+        fig_dna.update_layout(yaxis_title="Qtd de Lojas", xaxis_title=analise_alvo)
         st.plotly_chart(fig_dna, use_container_width=True)
 
-    # ... (Restante das abas mantendo a estrutura anterior)
     with tab_listagem:
-        st.dataframe(df_view[[col_loja, col_uf, col_fat, 'Performance']].sort_values(by=col_fat, ascending=False))
+        st.dataframe(df_view[[col_loja, col_uf, col_fat, col_dre, 'Performance']].sort_values(by=col_fat, ascending=False))
 
 else:
-    st.info("👋 Por favor, carregue o arquivo Excel para começar.")
+    st.info("👋 Por favor, carregue o arquivo 'Teste de lojas.xlsx'.")
