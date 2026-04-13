@@ -22,7 +22,8 @@ if uploaded_file:
                 return col
         return nome_padrao
 
-    col_fat = localizar_coluna(["FATURAMENTO", "MAR'25"], "MÉDIA FATURAMENTO DE MAR'25 ATÉ FEV'26")
+    # Mapeamento conforme os campos da sua base
+    col_fat = localizar_coluna(["FATURAMENTO", "MAR'25", "MÉDIA FATURAMENTO"], "MÉDIA FATURAMENTO DE MAR'25 ATÉ FEV'26")
     col_dre = localizar_coluna(["DRE_AC", "FEV/26"], "DRE_AC FEV/26")
     col_uf = localizar_coluna(["UF"], "UF")
     col_porte = localizar_coluna(["TAMANHO", "CIDADE"], "TAMANHO DA CIDADE")
@@ -36,8 +37,10 @@ if uploaded_file:
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
     df_filtrado_uf = df.copy() if opcao_uf == "Todos os Estados" else df[df[col_uf] == opcao_uf].copy()
 
+    # Tratamento numérico
     df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce').fillna(0)
     fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
+    
     faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
     
     df_view = df_filtrado_uf[
@@ -57,22 +60,28 @@ if uploaded_file:
 
     df_view['Performance_Base'] = df_view.apply(classificar, axis=1)
 
-    # --- CÁLCULO DE CONTAGEM PARA A LEGENDA ---
+    # --- CÁLCULO DE CONTAGEM PARA A LEGENDA DINÂMICA ---
     contagem_perf = df_view['Performance_Base'].value_counts()
     
     def formatar_legenda(perf_base):
         qtd = contagem_perf.get(perf_base, 0)
         return f"{perf_base} = {qtd} lojas"
 
+    # Criamos a coluna final que será usada na legenda dos gráficos
     df_view['Performance'] = df_view['Performance_Base'].apply(formatar_legenda)
 
+    # Mapa de cores associando a legenda formatada às cores corretas
     cores_map = {
-        formatar_legenda('🔵 Alta'): '#0000FF',
-        formatar_legenda('💎 Boa'): '#27ae60',
-        formatar_legenda('🟡 Baixa'): '#f1c40f',
-        formatar_legenda('🔴 Ruim'): '#e74c3c'
+        formatar_legenda('🔵 Alta'): '#0000FF', # Azul solicitado
+        formatar_legenda('💎 Boa'): '#27ae60',  # Verde
+        formatar_legenda('🟡 Baixa'): '#f1c40f', # Amarelo
+        formatar_legenda('🔴 Ruim'): '#e74c3c'   # Vermelho
     }
 
+    # Ordem fixa para a legenda
+    ordem_legenda = [formatar_legenda(p) for p in ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim'] if p in df_view['Performance_Base'].values]
+
+    # --- ABAS DE INTERFACE ---
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
 
     with tab_geo:
@@ -85,8 +94,6 @@ if uploaded_file:
         st.markdown("---")
         st.subheader("Dispersão: Faturamento vs DRE")
         
-        ordem_legenda = [formatar_legenda(p) for p in ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim'] if p in df_view['Performance_Base'].values]
-
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
                              hover_name=col_loja,
                              category_orders={"Performance": ordem_legenda},
@@ -95,6 +102,7 @@ if uploaded_file:
         
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
         
+        # Estilização da dispersão
         fig_scat.update_layout(
             legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
             xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
@@ -106,12 +114,13 @@ if uploaded_file:
         st.subheader("Análise Detalhada por Perfil")
         analise_alvo = st.selectbox("Analisar por:", [col_porte, col_posicao, col_estacionamento])
         
+        # Agrupamento para estatísticas do gráfico de barras
         stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
         totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
         stats = stats.merge(totais, on=analise_alvo)
         stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
         
-        # Uso de tags HTML para garantir o negrito e clareza no texto
+        # Configuração do texto que aparece no topo das barras (Grande e Negrito)
         stats['texto_barra'] = (
             "<b>Total: " + stats['total_grupo'].astype(str) + "</b><br>" +
             "<b>" + stats['Performance_Base'].str.split(" ").str[1] + "</b>: " + 
@@ -122,29 +131,32 @@ if uploaded_file:
                          barmode='group', text='texto_barra',
                          category_orders={"Performance": ordem_legenda},
                          color_discrete_map=cores_map,
-                         height=700) # Aumentado para dar mais folga vertical
+                         height=700)
         
-        # --- AJUSTES DE TAMANHO DO TEXTO DAS BARRAS ---
+        # Ajustes de visibilidade do texto no topo das barras
         fig_dna.update_traces(
             textposition='outside', 
             textfont=dict(
-                size=18, # Aumentado consideravelmente para facilitar leitura
+                size=18,           # Fonte grande para facilitar leitura
                 color="black",
-                family="Arial Black" # Fonte mais robusta
+                family="Arial Black"
             ),
-            cliponaxis=False # Garante que o texto não suma se sair do limite do gráfico
+            cliponaxis=False      # Impede que o texto seja cortado nas bordas
         )
         
         fig_dna.update_layout(
             legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
-            xaxis=dict(title=dict(font=dict(size=18), color="black"), tickfont=dict(size=16)),
-            yaxis=dict(title=dict(font=dict(size=18)), tickfont=dict(size=14)),
-            margin=dict(t=100, b=50) # Margem superior maior (t=100) para o texto não ser cortado
+            xaxis=dict(title=dict(font=dict(size=18)), tickfont=dict(size=16)),
+            yaxis=dict(title="Qtd de Lojas", titlefont=dict(size=18)),
+            margin=dict(t=100)    # Margem superior para o texto não sair da tela
         )
         st.plotly_chart(fig_dna, use_container_width=True)
 
     with tab_listagem:
-        st.dataframe(df_view[[col_loja, col_uf, col_fat, col_dre, 'Performance']].sort_values(by=col_fat, ascending=False), use_container_width=True)
+        st.dataframe(
+            df_view[[col_loja, col_uf, col_fat, col_dre, 'Performance']].sort_values(by=col_fat, ascending=False), 
+            use_container_width=True
+        )
 
 else:
-    st.info("👋 Por favor, carregue o arquivo 'Teste de lojas.xlsx'.")
+    st.info("👋 Por favor, carregue o arquivo 'Teste de lojas.xlsx' para iniciar a análise.")
