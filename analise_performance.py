@@ -12,6 +12,7 @@ st.markdown("---")
 uploaded_file = st.file_uploader("📂 Suba a base de dados das lojas (Excel)", type=['xlsx'])
 
 if uploaded_file:
+    # Carregamento robusto (suporta Excel e converte datas se necessário)
     df = pd.read_excel(uploaded_file)
     df.columns = [str(c).strip() for c in df.columns]
     
@@ -22,7 +23,6 @@ if uploaded_file:
                 return col
         return nome_padrao
 
-    # Mapeamento ajustado para focar no Tamanho da Cidade
     col_fat = localizar_coluna(["FATURAMENTO", "MAR'25", "MÉDIA FATURAMENTO"], "MÉDIA FATURAMENTO DE MAR'25 ATÉ FEV'26")
     col_dre = localizar_coluna(["DRE_AC", "FEV/26"], "DRE_AC FEV/26")
     col_uf = localizar_coluna(["UF"], "UF")
@@ -37,7 +37,7 @@ if uploaded_file:
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
     df_filtrado_uf = df.copy() if opcao_uf == "Todos os Estados" else df[df[col_uf] == opcao_uf].copy()
 
-    # Tratamento de valores numéricos para evitar erros de cálculo
+    # Tratamento numérico
     df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce').fillna(0)
     fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
     faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
@@ -59,9 +59,8 @@ if uploaded_file:
 
     df_view['Performance_Base'] = df_view.apply(classificar, axis=1)
 
-    # --- CÁLCULO DE CONTAGEM PARA A LEGENDA ---
+    # --- CONTAGEM PARA LEGENDA ---
     contagem_perf = df_view['Performance_Base'].value_counts()
-    
     def formatar_legenda(perf_base):
         qtd = contagem_perf.get(perf_base, 0)
         return f"{perf_base} = {qtd} lojas"
@@ -75,10 +74,10 @@ if uploaded_file:
         formatar_legenda('🔴 Ruim'): '#e74c3c'
     }
 
-    # Ordem dinâmica para evitar erros caso uma categoria não exista no filtro
     categorias_ordem = ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim']
     ordem_legenda = [formatar_legenda(p) for p in categorias_ordem if p in df_view['Performance_Base'].values]
 
+    # --- ABAS ---
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
 
     with tab_geo:
@@ -89,30 +88,28 @@ if uploaded_file:
         kpi3.metric("Lojas com DRE Negativo", len(df_view[df_view[col_dre] < 0]))
         
         st.markdown("---")
-        st.subheader("Dispersão: Faturamento vs DRE")
-        
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
                              hover_name=col_loja,
                              category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map,
-                             height=600)
-        
+                             color_discrete_map=cores_map, height=600)
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
-        fig_scat.update_layout(
-            legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
-            xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
-            yaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14))
-        )
         st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
-        st.subheader(f"DNA do Sucesso: Melhores lojas por Tamanho de Cidade ({opcao_uf})")
+        st.subheader("🧬 Análise de Variáveis de Sucesso")
+        
+        # SELETOR DE VARIÁVEL (Ajuste solicitado)
+        analise_alvo = st.selectbox(
+            "Selecione a variável para analisar o DNA:",
+            [col_porte, col_posicao, col_estacionamento],
+            index=0
+        )
         
         if not df_view.empty:
-            # Agrupamento focado no Tamanho da Cidade (Coluna L)
-            stats = df_view.groupby([col_porte, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
-            totais = df_view.groupby(col_porte).size().reset_index(name='total_grupo')
-            stats = stats.merge(totais, on=col_porte)
+            # Agrupamento dinâmico baseado na escolha do usuário
+            stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
+            totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
+            stats = stats.merge(totais, on=analise_alvo)
             stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
             
             stats['texto_barra'] = (
@@ -121,39 +118,35 @@ if uploaded_file:
                 ": " + stats['porcentagem'].astype(str) + "%"
             )
 
-            fig_dna = px.bar(stats, x=col_porte, y='contagem', color='Performance',
+            fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
                              barmode='group', text='texto_barra',
                              category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map,
-                             height=650)
+                             color_discrete_map=cores_map, height=650)
             
-            fig_dna.update_traces(
-                textposition='outside', 
-                textfont=dict(size=14, color="black", family="Arial Black"),
-                cliponaxis=False
-            )
+            fig_dna.update_traces(textposition='outside', 
+                                 textfont=dict(size=14, color="black", family="Arial Black"),
+                                 cliponaxis=False)
             
             fig_dna.update_layout(
-                legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
-                xaxis=dict(title="Tamanho da Cidade", titlefont=dict(size=16), tickfont=dict(size=14)),
-                yaxis=dict(title="Quantidade de Lojas", titlefont=dict(size=16), tickfont=dict(size=14)),
+                legend=dict(font=dict(size=16)),
+                xaxis=dict(title=analise_alvo, titlefont=dict(size=16)),
                 margin=dict(t=100) 
             )
             st.plotly_chart(fig_dna, use_container_width=True)
 
-            # --- INSIGHTS DE MELHOR PORTE ---
+            # --- INSIGHTS DINÂMICOS ---
             st.markdown("---")
             sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
             if not sucesso.empty:
-                melhor_porte = sucesso.groupby(col_porte)['contagem'].sum().idxmax()
-                st.info(f"💡 Em **{opcao_uf}**, o tamanho de cidade com as melhores lojas é: **{melhor_porte}**")
+                melhor_valor = sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
+                st.info(f"💡 Em **{opcao_uf}**, a variável **{analise_alvo}** que apresenta o maior volume de lojas de sucesso é: **{melhor_valor}**")
             else:
-                st.warning("Não há lojas classificadas como 'Boa' ou 'Alta' neste estado/filtro.")
+                st.warning("Não há lojas de alta performance nos filtros selecionados.")
         else:
-            st.warning("Sem dados para exibir na análise de DNA.")
+            st.warning("Sem dados para exibir.")
 
     with tab_listagem:
-        st.dataframe(df_view[[col_loja, col_uf, col_porte, col_fat, col_dre, 'Performance_Base']].sort_values(by=col_fat, ascending=False), use_container_width=True)
+        st.dataframe(df_view[[col_loja, col_uf, col_porte, col_posicao, col_estacionamento, col_fat, 'Performance_Base']].sort_values(by=col_fat, ascending=False), use_container_width=True)
 
 else:
-    st.info("👋 Por favor, carregue o arquivo para iniciar a análise.")
+    st.info("👋 Por favor, carregue o arquivo Excel para iniciar.")
