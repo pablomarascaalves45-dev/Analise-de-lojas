@@ -44,7 +44,7 @@ if uploaded_file:
         (df_filtrado_uf[col_fat] >= faixa_fat[0]) & (df_filtrado_uf[col_fat] <= faixa_fat[1])
     ].copy()
 
-    # --- LÓGICA DE PERFORMANCE ATUALIZADA ---
+    # --- LÓGICA DE PERFORMANCE ---
     def classificar(row):
         f = row[col_fat]
         d = row[col_dre] if col_dre in df.columns else 0
@@ -76,7 +76,7 @@ if uploaded_file:
     tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
 
     with tab_geo:
-        st.subheader("Indicadores de Resumo")
+        st.subheader(f"Indicadores de Resumo - {opcao_uf}")
         kpi1, kpi2, kpi3 = st.columns(3)
         kpi1.metric("Qtd. Total de Lojas", len(df_view))
         kpi2.metric("Vendas > R$ 400k", len(df_view[df_view[col_fat] >= 400000]))
@@ -95,7 +95,6 @@ if uploaded_file:
         
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
         
-        # AUMENTO DE FONTE NA LEGENDA E EIXOS
         fig_scat.update_layout(
             legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
             xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
@@ -104,8 +103,10 @@ if uploaded_file:
         st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
-        st.subheader("Análise Detalhada por Perfil")
-        analise_alvo = st.selectbox("Analisar por:", [col_porte, col_posicao, col_estacionamento])
+        st.subheader(f"DNA do Sucesso: Performance por Porte de Cidade ({opcao_uf})")
+        
+        # FOCO EXCLUSIVO NO TAMANHO DA CIDADE CONFORME SOLICITADO
+        analise_alvo = col_porte 
         
         stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
         totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
@@ -124,23 +125,27 @@ if uploaded_file:
                          color_discrete_map=cores_map,
                          height=650)
         
-        # AJUSTE PARA CAIXA DE TEXTO MAIOR E LEITURA MELHORADA
         fig_dna.update_traces(
             textposition='outside', 
-            textfont=dict(size=14, color="black"), # Aumento da fonte sobre a barra
+            textfont=dict(size=14, color="black", family="Arial Black"),
             cliponaxis=False
         )
         
         fig_dna.update_layout(
             legend=dict(font=dict(size=16), title=dict(font=dict(size=18))),
-            xaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
-            yaxis=dict(title=dict(font=dict(size=16)), tickfont=dict(size=14)),
-            margin=dict(t=50) # Mais espaço no topo para o texto não cortar
+            xaxis=dict(title="Tamanho da Cidade", titlefont=dict(size=16), tickfont=dict(size=14)),
+            yaxis=dict(title="Quantidade de Lojas", titlefont=dict(size=16), tickfont=dict(size=14)),
+            margin=dict(t=100) 
         )
         st.plotly_chart(fig_dna, use_container_width=True)
 
+        # INSIGHTS RÁPIDOS
+        st.markdown("---")
+        melhor_porte = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])].groupby(analise_alvo)['contagem'].sum().idxmax()
+        st.info(f"💡 No estado selecionado (**{opcao_uf}**), o porte de cidade com maior volume de lojas de alta performance é: **{melhor_porte}**")
+
     with tab_listagem:
-        st.dataframe(df_view[[col_loja, col_uf, col_fat, col_dre, 'Performance']].sort_values(by=col_fat, ascending=False), use_container_width=True)
+        st.dataframe(df_view[[col_loja, col_uf, col_porte, col_fat, col_dre, 'Performance']].sort_values(by=col_fat, ascending=False), use_container_width=True)
 
 else:
-    st.info("👋 Por favor, carregue o arquivo 'Teste de lojas.xlsx'.")
+    st.info("👋 Por favor, carregue o arquivo para iniciar a análise.")
