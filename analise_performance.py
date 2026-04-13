@@ -23,9 +23,9 @@ if uploaded_file:
                 return col
         return nome_padrao
 
-    # Mapeamento com termos de busca ampliados para evitar o KeyError
+    # Mapeamento ajustado
     col_fat = localizar_coluna(["FATURAMENTO", "MAR'25", "MÉDIA FATURAMENTO", "SOMA DAS VENDAS"], "MÉDIA FATURAMENTO")
-    col_dre = localizar_coluna(["DRE_AC", "FEV/26", "DRE FEV"], "DRE_AC FEV/26")
+    col_dre = localizar_coluna(["DRE_AC", "FEV/26", "DRE FEV", "DRE ACUMULADO"], "DRE_AC FEV/26")
     col_uf = localizar_coluna(["UF", "ESTADO"], "UF")
     col_porte = localizar_coluna(["TAMANHO DA CIDADE", "PORTE", "TAMANHO"], "TAMANHO DA CIDADE")
     col_posicao = localizar_coluna(["POSIÇÃO", "POSICAO"], "POSIÇÃO DA LOJA")
@@ -38,8 +38,10 @@ if uploaded_file:
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
     df_filtrado_uf = df.copy() if opcao_uf == "Todos os Estados" else df[df[col_uf] == opcao_uf].copy()
 
-    # Tratamento numérico para cálculos
+    # Tratamento numérico para faturamento e DRE
     df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce').fillna(0)
+    df_filtrado_uf[col_dre] = pd.to_numeric(df_filtrado_uf[col_dre], errors='coerce').fillna(0)
+    
     fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
     faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
     
@@ -50,7 +52,7 @@ if uploaded_file:
     # --- LÓGICA DE PERFORMANCE ---
     def classificar(row):
         f = row[col_fat]
-        d = row[col_dre] if col_dre in df.columns else 0
+        d = row[col_dre]
         if f >= 1000000: return '🔵 Alta'
         elif f >= 400000: return '💎 Boa'
         else: return '🔴 Ruim' if d < 0 else '🟡 Baixa'
@@ -82,22 +84,22 @@ if uploaded_file:
         k1, k2, k3 = st.columns(3)
         k1.metric("Total Lojas", len(df_view))
         k2.metric("Faturamento > 400k", len(df_view[df_view[col_fat] >= 400000]))
-        k3.metric("DRE Negativo", len(df_view[df_view[col_dre] < 0]) if col_dre in df.columns else "N/A")
+        # KPI de DRE Médio do Grupo
+        dre_medio = df_view[col_dre].mean()
+        k3.metric("DRE Médio", f"{dre_medio*100:.2f}%")
 
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
                              hover_name=col_loja, category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map, height=500)
+                             color_discrete_map=cores_map, height=500,
+                             labels={col_fat: "Faturamento Médio", col_dre: "DRE Acumulado %"})
+        
+        fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
         st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
         st.subheader("🧬 Análise de Variáveis")
-        
-        # SELETOR DE VARIÁVEL (Tamanho, Posição ou Estacionamento)
-        opcoes_dna = []
-        for c in [col_porte, col_posicao, col_estacionamento]:
-            if c in df.columns: opcoes_dna.append(c)
-        
-        analise_alvo = st.selectbox("Escolha o que analisar:", opcoes_dna)
+        opcoes_dna = [c for c in [col_porte, col_posicao, col_estacionamento] if c in df.columns]
+        analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
             stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
@@ -116,16 +118,28 @@ if uploaded_file:
             fig_dna.update_traces(textposition='outside', textfont=dict(size=12, color="black"))
             st.plotly_chart(fig_dna, use_container_width=True)
 
-            # Insight automático
             sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
             if not sucesso.empty:
                 melhor = sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
                 st.info(f"💡 Em **{opcao_uf}**, o melhor DNA para **{analise_alvo}** é: **{melhor}**")
 
     with tab_listagem:
-        # Mostra as colunas que você quer analisar na tabela final
-        cols_mostrar = [col_loja, col_uf, col_porte, col_posicao, col_estacionamento, col_fat, 'Performance_Base']
-        st.dataframe(df_view[[c for c in cols_mostrar if c in df_view.columns]], use_container_width=True)
+        st.subheader("📋 Detalhamento das Lojas")
+        # Seleção e formatação das colunas para a tabela final
+        cols_final = [col_loja, col_uf, col_porte, col_posicao, col_estacionamento, col_fat, col_dre, 'Performance_Base']
+        df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
+        
+        # Ordenar por faturamento
+        df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
+        
+        # Estilização para o Streamlit
+        st.dataframe(
+            df_tabela.style.format({
+                col_fat: "R$ {:,.2f}",
+                col_dre: "{:.2%}"
+            }), 
+            use_container_width=True
+        )
 
 else:
-    st.info("Aguardando upload do arquivo Excel...")
+    st.info("👋 Por favor, carregue o arquivo Excel para iniciar a análise.")
