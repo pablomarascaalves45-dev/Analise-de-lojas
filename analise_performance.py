@@ -95,7 +95,8 @@ if uploaded_file:
         return f"{perf_base} = {qtd} lojas"
 
     df_view['Performance'] = df_view['Performance_Base'].apply(formatar_legenda)
-    ordem_legenda = [formatar_legenda(p) for p in ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim'] if p in df_view['Performance_Base'].values]
+    ordem_base = ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim']
+    ordem_legenda = [formatar_legenda(p) for p in ordem_base if p in df_view['Performance_Base'].values]
 
     cores_map = {
         formatar_legenda('🔵 Alta'): '#0000FF',
@@ -128,6 +129,7 @@ if uploaded_file:
         analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
+            # Gráfico Principal de DNA
             temp_df = df_view.copy()
             if analise_alvo in [col_demanda, col_populacao]:
                 temp_df[analise_alvo] = pd.qcut(temp_df[analise_alvo], q=4, duplicates='drop').astype(str)
@@ -138,51 +140,50 @@ if uploaded_file:
             }).reset_index()
             stats.rename(columns={col_id: 'contagem', col_loja: 'lista_lojas'}, inplace=True)
 
-            totais = temp_df.groupby(analise_alvo).size().reset_index(name='total_grupo')
-            stats = stats.merge(totais, on=analise_alvo)
-            stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
-            
-            stats['texto_barra'] = "<b>" + stats['Performance_Base'].str.split(" ").str[1] + "</b><br>" + \
-                                   stats['contagem'].astype(str) + " lojas"
-
             fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
-                             barmode='group', text='texto_barra',
-                             hover_data={'Performance': True, 'contagem': True, 'lista_lojas': True, 'texto_barra': False},
+                             barmode='group', text='contagem',
                              category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map, height=600)
-            
-            fig_dna.update_traces(
-                textposition='outside', 
-                textfont=dict(size=11, color="black"),
-                hovertemplate="<b>%{x}</b><br>Qtd: %{y} lojas<br><br><b>Lojas:</b><br>%{customdata[2]}<extra></extra>"
-            )
+                             color_discrete_map=cores_map, height=500)
             st.plotly_chart(fig_dna, use_container_width=True)
 
-            # --- INCLUSÃO DO GRÁFICO COMPARATIVO LOCALIZAÇÃO vs TAMANHO DA CIDADE ---
+            # --- NOVO GRÁFICO: PERFORMANCE POR TAMANHO DE CIDADE E LOCALIZAÇÃO ---
             st.markdown("---")
-            st.subheader(f"🏢 Comparativo: {col_localizacao} por {col_porte}")
+            st.subheader("📊 Onde estão as lojas que 'Vão Bem'?")
+            st.info("Este gráfico separa CENTRO vs BAIRRO e mostra a performance real em cada tamanho de cidade.")
             
             if col_localizacao in df_view.columns and col_porte in df_view.columns:
-                df_comp = df_view.groupby([col_porte, col_localizacao]).size().reset_index(name='qtd')
+                # Agrupamento para cruzar tudo
+                df_deep = df_view.groupby([col_porte, col_localizacao, 'Performance']).size().reset_index(name='qtd')
                 
-                fig_comp = px.bar(
-                    df_comp, 
-                    x=col_porte, 
-                    y='qtd', 
-                    color=col_localizacao,
+                # Criando gráfico com Facetas (Colunas para Bairro/Centro)
+                fig_deep = px.bar(
+                    df_deep,
+                    x=col_porte,
+                    y='qtd',
+                    color='Performance',
+                    facet_col=col_localizacao, # Cria colunas separadas para Bairro e Centro
                     barmode='group',
                     text='qtd',
-                    color_discrete_map={"CENTRO": "#1f77b4", "BAIRRO": "#ff7f0e"},
-                    height=500
+                    category_orders={
+                        "Performance": ordem_legenda,
+                        col_localizacao: ["BAIRRO", "CENTRO"] # Força ordem das colunas
+                    },
+                    color_discrete_map=cores_map,
+                    height=600
                 )
                 
-                fig_comp.update_traces(textposition='outside')
-                fig_comp.update_layout(
+                fig_deep.update_traces(textposition='outside')
+                fig_deep.update_layout(
                     xaxis_title="Tamanho da Cidade",
-                    yaxis_title="Quantidade de Lojas",
-                    legend_title="Localização"
+                    yaxis_title="Qtd de Lojas",
+                    legend_title="Performance",
+                    margin=dict(t=50)
                 )
-                st.plotly_chart(fig_comp, use_container_width=True)
+                
+                # Ajusta os títulos das facetas para ficarem mais limpos
+                fig_deep.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+                
+                st.plotly_chart(fig_deep, use_container_width=True)
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
