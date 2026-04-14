@@ -23,8 +23,10 @@ if uploaded_file:
                 return col
         return nome_padrao
 
-    # Prioridade para o Nome da Loja
-    col_loja = localizar_coluna(["LOJAS", "NOME", "ID_LOJA", "NOME DA LOJA"], "LOJAS")
+    # Identificação separada para ID e Nome
+    col_id = localizar_coluna(["ID_LOJA", "COD_LOJA", "ID"], "ID_LOJA")
+    col_loja = localizar_coluna(["LOJAS", "NOME DA LOJA", "NOME_LOJA"], "LOJAS")
+    
     col_fat = localizar_coluna(["FATURAMENTO", "MAR'25", "MÉDIA FATURAMENTO", "SOMA DAS VENDAS"], "MÉDIA FATURAMENTO")
     col_dre = localizar_coluna(["DRE_AC", "FEV/26", "DRE FEV", "DRE ACUMULADO"], "DRE_AC FEV/26")
     col_uf = localizar_coluna(["UF", "ESTADO"], "UF")
@@ -68,7 +70,7 @@ if uploaded_file:
         (df_filtrado_uf[col_fat] >= faixa_fat[0]) & (df_filtrado_uf[col_fat] <= faixa_fat[1])
     ].copy()
 
-    # --- PERFORMANCE ---
+    # --- LÓGICA DE PERFORMANCE ---
     def classificar(row):
         f = row[col_fat]
         d = row[col_dre]
@@ -78,6 +80,7 @@ if uploaded_file:
 
     df_view['Performance_Base'] = df_view.apply(classificar, axis=1)
     contagem_perf = df_view['Performance_Base'].value_counts()
+    
     def formatar_legenda(perf_base):
         qtd = contagem_perf.get(perf_base, 0)
         return f"{perf_base} = {qtd} lojas"
@@ -104,7 +107,7 @@ if uploaded_file:
         k3.metric("DRE Médio", f"{dre_medio*100:.2f}%")
 
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
-                             hover_name=col_loja, # Nome da loja ao passar o mouse
+                             hover_name=col_loja, # Exibe o Nome ao passar o mouse
                              category_orders={"Performance": ordem_legenda},
                              color_discrete_map=cores_map, height=500)
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
@@ -117,8 +120,6 @@ if uploaded_file:
         
         if not df_view.empty and analise_alvo:
             temp_df = df_view.copy()
-            
-            # Ajuste para variáveis numéricas: Agrupar mas manter o nome da loja no texto
             if analise_alvo in [col_demanda, col_populacao]:
                 temp_df[analise_alvo] = pd.qcut(temp_df[analise_alvo], q=4, duplicates='drop').astype(str)
 
@@ -127,7 +128,6 @@ if uploaded_file:
             stats = stats.merge(totais, on=analise_alvo)
             stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
             
-            # AJUSTE NO TEXTO: Agora focado na Performance e Contagem
             stats['texto'] = "<b>" + stats['Performance_Base'].str.split(" ").str[1] + "</b><br>" + \
                              stats['contagem'].astype(str) + " lojas (" + stats['porcentagem'].astype(str) + "%)"
 
@@ -139,15 +139,11 @@ if uploaded_file:
             fig_dna.update_traces(textposition='outside', textfont=dict(size=11, color="black"))
             st.plotly_chart(fig_dna, use_container_width=True)
 
-            # Insight Dinâmico com Nome do DNA
-            sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
-            if not sucesso.empty:
-                melhor = sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
-                st.info(f"💡 Em **{opcao_uf}**, o melhor DNA para **{analise_alvo}** é: **{melhor}**")
-
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
-        cols_final = [col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_demanda, col_populacao, col_fat, col_dre, 'Performance_Base']
+        
+        # AJUSTE: Sequência ID_LOJA e depois LOJAS (Nome)
+        cols_final = [col_id, col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_demanda, col_populacao, col_fat, col_dre, 'Performance_Base']
         df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
         df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
         
@@ -160,7 +156,7 @@ if uploaded_file:
                 'IDADE_LOJA': "{:.0f} anos"
             }), 
             use_container_width=True,
-            hide_index=True # Remove a coluna de índices numéricos para limpar a visão
+            hide_index=True
         )
 
 else:
