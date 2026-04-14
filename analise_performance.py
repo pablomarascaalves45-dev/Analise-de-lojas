@@ -64,10 +64,8 @@ if uploaded_file:
     fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
     faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
     
-    # AJUSTE: Exibe os valores selecionados no slider
     st.sidebar.write(f"📊 **Selecionado:** R$ {faixa_fat[0]:,.0f} a R$ {faixa_fat[1]:,.0f}")
     
-    # AJUSTE: Legenda de critérios de Performance na Sidebar
     st.sidebar.markdown("---")
     st.sidebar.subheader("📌 Critérios de Performance")
     st.sidebar.markdown("""
@@ -159,6 +157,32 @@ if uploaded_file:
                 hovertemplate="<b>%{x}</b><br>Qtd: %{y} lojas<br><br><b>Lojas:</b><br>%{customdata[2]}<extra></extra>"
             )
             st.plotly_chart(fig_dna, use_container_width=True)
+
+            # --- INCLUSÃO DO GRÁFICO COMPARATIVO LOCALIZAÇÃO vs TAMANHO DA CIDADE ---
+            st.markdown("---")
+            st.subheader(f"🏢 Comparativo: {col_localizacao} por {col_porte}")
+            
+            if col_localizacao in df_view.columns and col_porte in df_view.columns:
+                df_comp = df_view.groupby([col_porte, col_localizacao]).size().reset_index(name='qtd')
+                
+                fig_comp = px.bar(
+                    df_comp, 
+                    x=col_porte, 
+                    y='qtd', 
+                    color=col_localizacao,
+                    barmode='group',
+                    text='qtd',
+                    color_discrete_map={"CENTRO": "#1f77b4", "BAIRRO": "#ff7f0e"},
+                    height=500
+                )
+                
+                fig_comp.update_traces(textposition='outside')
+                fig_comp.update_layout(
+                    xaxis_title="Tamanho da Cidade",
+                    yaxis_title="Quantidade de Lojas",
+                    legend_title="Localização"
+                )
+                st.plotly_chart(fig_comp, use_container_width=True)
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
