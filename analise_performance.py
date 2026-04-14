@@ -33,19 +33,15 @@ if uploaded_file:
     col_abertura = localizar_coluna(["DATA DE ABERTURA", "ABERTURA"], "DATA DE ABERTURA")
     col_localizacao = localizar_coluna(["BAIRRO OU CENTRO", "LOCALIZACAO", "CENTRO"], "BAIRRO OU CENTRO")
 
-    # --- TRATAMENTO DE VARIÁVEIS ESPECÍFICAS ---
-    
-    # 1. Ajuste Bairro vs Centro: Tudo que não for CENTRO vira BAIRRO
+    # --- TRATAMENTO DE VARIÁVEIS ---
     if col_localizacao in df.columns:
         df[col_localizacao] = df[col_localizacao].astype(str).str.upper().str.strip()
         df[col_localizacao] = df[col_localizacao].apply(lambda x: "CENTRO" if "CENTRO" in x else "BAIRRO")
 
-    # 2. Cálculo da Idade em Anos
     if col_abertura in df.columns:
         df[col_abertura] = pd.to_datetime(df[col_abertura], errors='coerce')
         hoje = datetime.now()
         df['IDADE_LOJA'] = df[col_abertura].apply(lambda x: hoje.year - x.year if pd.notnull(x) else 0)
-        # Criar faixas de idade para o gráfico de DNA
         df['FAIXA_IDADE'] = df['IDADE_LOJA'].apply(lambda x: f"{x} anos")
 
     # --- BARRA LATERAL (FILTROS) ---
@@ -54,7 +50,6 @@ if uploaded_file:
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
     df_filtrado_uf = df.copy() if opcao_uf == "Todos os Estados" else df[df[col_uf] == opcao_uf].copy()
 
-    # Tratamento numérico
     df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce').fillna(0)
     df_filtrado_uf[col_dre] = pd.to_numeric(df_filtrado_uf[col_dre], errors='coerce').fillna(0)
     
@@ -74,8 +69,6 @@ if uploaded_file:
         else: return '🔴 Ruim' if d < 0 else '🟡 Baixa'
 
     df_view['Performance_Base'] = df_view.apply(classificar, axis=1)
-
-    # Legenda Dinâmica
     contagem_perf = df_view['Performance_Base'].value_counts()
     def formatar_legenda(perf_base):
         qtd = contagem_perf.get(perf_base, 0)
@@ -104,39 +97,60 @@ if uploaded_file:
 
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
                              hover_name=col_loja, category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map, height=500,
-                             labels={col_fat: "Faturamento Médio", col_dre: "DRE Acumulado %"})
+                             color_discrete_map=cores_map, height=500)
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
         st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
         st.subheader("🧬 Análise de Variáveis de Sucesso")
         
-        # Opções de análise incluindo Localização e Faixa de Idade
         opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao, col_estacionamento] if c in df_view.columns]
         analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
+            # Gráfico Principal de DNA
             stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
             totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
             stats = stats.merge(totais, on=analise_alvo)
             stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
-            
             stats['texto'] = "<b>Total: " + stats['total_grupo'].astype(str) + "</b><br>" + \
                              stats['Performance_Base'].str.split(" ").str[1] + ": " + stats['porcentagem'].astype(str) + "%"
 
             fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
                              barmode='group', text='texto',
                              category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map, height=600)
+                             color_discrete_map=cores_map, height=500)
             
             fig_dna.update_traces(textposition='outside', textfont=dict(size=12, color="black"))
             st.plotly_chart(fig_dna, use_container_width=True)
 
+            # Insight Dinâmico
             sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
             if not sucesso.empty:
                 melhor = sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
                 st.info(f"💡 Em **{opcao_uf}**, o melhor DNA para **{analise_alvo}** é: **{melhor}**")
+            
+            # --- NOVO GRÁFICO: CRUZAMENTO PORTE CIDADE VS LOCALIZAÇÃO ---
+            st.markdown("---")
+            st.subheader("🏙️ Performance por Tamanho de Cidade e Localização")
+            
+            if col_porte in df_view.columns and col_localizacao in df_view.columns:
+                # Agrupando por Porte e Localização para ver o Faturamento Médio
+                df_cruzado = df_view.groupby([col_porte, col_localizacao])[col_fat].mean().reset_index()
+                
+                fig_cruzado = px.bar(df_cruzado, 
+                                     x=col_porte, 
+                                     y=col_fat, 
+                                     color=col_localizacao,
+                                     barmode='group',
+                                     title="Faturamento Médio: Porte da Cidade vs Localização",
+                                     labels={col_fat: "Faturamento Médio (R$)"},
+                                     color_discrete_sequence=["#3498db", "#9b59b6"]) # Azul e Roxo
+                
+                fig_cruzado.update_layout(yaxis_tickformat="R$ ,.0f")
+                st.plotly_chart(fig_cruzado, use_container_width=True)
+                
+                st.caption("Este gráfico ajuda a entender se, por exemplo, em cidades pequenas o 'Centro' domina, ou se em cidades grandes o 'Bairro' é mais lucrativo.")
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
