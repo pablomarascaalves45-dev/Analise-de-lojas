@@ -23,10 +23,8 @@ if uploaded_file:
                 return col
         return nome_padrao
 
-    # Identificação separada para ID e Nome
     col_id = localizar_coluna(["ID_LOJA", "COD_LOJA", "ID"], "ID_LOJA")
     col_loja = localizar_coluna(["LOJAS", "NOME DA LOJA", "NOME_LOJA"], "LOJAS")
-    
     col_fat = localizar_coluna(["FATURAMENTO", "MAR'25", "MÉDIA FATURAMENTO", "SOMA DAS VENDAS"], "MÉDIA FATURAMENTO")
     col_dre = localizar_coluna(["DRE_AC", "FEV/26", "DRE FEV", "DRE ACUMULADO"], "DRE_AC FEV/26")
     col_uf = localizar_coluna(["UF", "ESTADO"], "UF")
@@ -107,7 +105,7 @@ if uploaded_file:
         k3.metric("DRE Médio", f"{dre_medio*100:.2f}%")
 
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
-                             hover_name=col_loja, # Exibe o Nome ao passar o mouse
+                             hover_name=col_loja,
                              category_orders={"Performance": ordem_legenda},
                              color_discrete_map=cores_map, height=500)
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
@@ -123,26 +121,36 @@ if uploaded_file:
             if analise_alvo in [col_demanda, col_populacao]:
                 temp_df[analise_alvo] = pd.qcut(temp_df[analise_alvo], q=4, duplicates='drop').astype(str)
 
-            stats = temp_df.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
+            # AJUSTE: Criar lista de lojas por grupo para o Hover
+            stats = temp_df.groupby([analise_alvo, 'Performance', 'Performance_Base']).agg({
+                col_loja: lambda x: "<br>".join(list(x)[:15]) + ("<br>..." if len(x) > 15 else ""), # Lista as primeiras 15 lojas
+                col_id: 'count'
+            }).reset_index()
+            stats.rename(columns={col_id: 'contagem', col_loja: 'lista_lojas'}, inplace=True)
+
             totais = temp_df.groupby(analise_alvo).size().reset_index(name='total_grupo')
             stats = stats.merge(totais, on=analise_alvo)
             stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
             
-            stats['texto'] = "<b>" + stats['Performance_Base'].str.split(" ").str[1] + "</b><br>" + \
-                             stats['contagem'].astype(str) + " lojas (" + stats['porcentagem'].astype(str) + "%)"
+            stats['texto_barra'] = "<b>" + stats['Performance_Base'].str.split(" ").str[1] + "</b><br>" + \
+                                   stats['contagem'].astype(str) + " lojas"
 
+            # Hover personalizado com a lista de lojas
             fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
-                             barmode='group', text='texto',
+                             barmode='group', text='texto_barra',
+                             hover_data={'Performance': True, 'contagem': True, 'lista_lojas': True, 'texto_barra': False},
                              category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map, height=500)
+                             color_discrete_map=cores_map, height=600)
             
-            fig_dna.update_traces(textposition='outside', textfont=dict(size=11, color="black"))
+            fig_dna.update_traces(
+                textposition='outside', 
+                textfont=dict(size=11, color="black"),
+                hovertemplate="<b>%{x}</b><br>Qtd: %{y} lojas<br><br><b>Lojas:</b><br>%{customdata[2]}<extra></extra>"
+            )
             st.plotly_chart(fig_dna, use_container_width=True)
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
-        
-        # AJUSTE: Sequência ID_LOJA e depois LOJAS (Nome)
         cols_final = [col_id, col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_demanda, col_populacao, col_fat, col_dre, 'Performance_Base']
         df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
         df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
