@@ -32,8 +32,19 @@ if uploaded_file:
     col_loja = localizar_coluna(["LOJAS", "NOME", "ID_LOJA"], "LOJAS")
     col_abertura = localizar_coluna(["DATA DE ABERTURA", "ABERTURA"], "DATA DE ABERTURA")
     col_localizacao = localizar_coluna(["BAIRRO OU CENTRO", "LOCALIZACAO", "CENTRO"], "BAIRRO OU CENTRO")
+    
+    # NOVAS VARIÁVEIS
+    col_demanda = localizar_coluna(["DEMANDA FSJ", "DEMANDA"], "DEMANDA FSJ RAIO DE 1 KM")
+    col_populacao = localizar_coluna(["POPULAÇÃO RAIO", "POPULACAO"], "POPULAÇÃO RAIO DE 1KM")
 
     # --- TRATAMENTO DE VARIÁVEIS ---
+    
+    # Limpeza de strings para números (Demanda e População)
+    for c in [col_demanda, col_populacao]:
+        if c in df.columns:
+            df[c] = df[c].astype(str).str.replace(r'[R$\.\s]', '', regex=True).str.replace(',', '.')
+            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+
     if col_localizacao in df.columns:
         df[col_localizacao] = df[col_localizacao].astype(str).str.upper().str.strip()
         df[col_localizacao] = df[col_localizacao].apply(lambda x: "CENTRO" if "CENTRO" in x else "BAIRRO")
@@ -104,15 +115,21 @@ if uploaded_file:
     with tab_dna:
         st.subheader("🧬 Análise de Variáveis de Sucesso")
         
-        opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao, col_estacionamento] if c in df_view.columns]
+        # Inclusão das novas variáveis no selectbox
+        opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao, col_demanda, col_populacao] if c in df_view.columns]
         analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
-            # Gráfico Principal de DNA
-            stats = df_view.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
-            totais = df_view.groupby(analise_alvo).size().reset_index(name='total_grupo')
+            # Se for uma variável numérica (Demanda/População), vamos criar faixas para o gráfico não ficar poluído
+            temp_df = df_view.copy()
+            if analise_alvo in [col_demanda, col_populacao]:
+                temp_df[analise_alvo] = pd.qcut(temp_df[analise_alvo], q=4, duplicates='drop').astype(str)
+
+            stats = temp_df.groupby([analise_alvo, 'Performance', 'Performance_Base']).size().reset_index(name='contagem')
+            totais = temp_df.groupby(analise_alvo).size().reset_index(name='total_grupo')
             stats = stats.merge(totais, on=analise_alvo)
             stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
+            
             stats['texto'] = "<b>Total: " + stats['total_grupo'].astype(str) + "</b><br>" + \
                              stats['Performance_Base'].str.split(" ").str[1] + ": " + stats['porcentagem'].astype(str) + "%"
 
@@ -124,7 +141,6 @@ if uploaded_file:
             fig_dna.update_traces(textposition='outside', textfont=dict(size=12, color="black"))
             st.plotly_chart(fig_dna, use_container_width=True)
 
-            # Insight Dinâmico
             sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
             if not sucesso.empty:
                 melhor = sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
@@ -135,26 +151,17 @@ if uploaded_file:
             st.subheader("🏙️ Performance por Tamanho de Cidade e Localização")
             
             if col_porte in df_view.columns and col_localizacao in df_view.columns:
-                # Agrupando por Porte e Localização para ver o Faturamento Médio
                 df_cruzado = df_view.groupby([col_porte, col_localizacao])[col_fat].mean().reset_index()
-                
-                fig_cruzado = px.bar(df_cruzado, 
-                                     x=col_porte, 
-                                     y=col_fat, 
-                                     color=col_localizacao,
-                                     barmode='group',
-                                     title="Faturamento Médio: Porte da Cidade vs Localização",
+                fig_cruzado = px.bar(df_cruzado, x=col_porte, y=col_fat, color=col_localizacao,
+                                     barmode='group', title="Faturamento Médio: Porte da Cidade vs Localização",
                                      labels={col_fat: "Faturamento Médio (R$)"},
-                                     color_discrete_sequence=["#3498db", "#9b59b6"]) # Azul e Roxo
-                
+                                     color_discrete_sequence=["#3498db", "#9b59b6"])
                 fig_cruzado.update_layout(yaxis_tickformat="R$ ,.0f")
                 st.plotly_chart(fig_cruzado, use_container_width=True)
-                
-                st.caption("Este gráfico ajuda a entender se, por exemplo, em cidades pequenas o 'Centro' domina, ou se em cidades grandes o 'Bairro' é mais lucrativo.")
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
-        cols_final = [col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_posicao, col_fat, col_dre, 'Performance_Base']
+        cols_final = [col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_demanda, col_populacao, col_fat, col_dre, 'Performance_Base']
         df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
         df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
         
@@ -162,6 +169,8 @@ if uploaded_file:
             df_tabela.style.format({
                 col_fat: "R$ {:,.2f}",
                 col_dre: "{:.2%}",
+                col_demanda: "R$ {:,.2f}",
+                col_populacao: "{:,.0f}",
                 'IDADE_LOJA': "{:.0f} anos"
             }), 
             use_container_width=True
