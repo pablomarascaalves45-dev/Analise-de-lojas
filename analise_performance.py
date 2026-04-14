@@ -70,7 +70,8 @@ if uploaded_file:
     st.sidebar.subheader("📌 Critérios de Performance")
     st.sidebar.markdown("""
     * **🔵 Alta:** Fat. ≥ R$ 1.000.000
-    * **💎 Boa:** Fat. ≥ R$ 400.000
+    * **💎 Boa:** Fat. ≥ R$ 400.000 e DRE Positivo
+    * **🟠 Alto Custo:** Fat. ≥ R$ 400.000 e DRE Negativo
     * **🟡 Baixa:** Fat. < R$ 400.000 e DRE Positivo
     * **🔴 Ruim:** Fat. < R$ 400.000 e DRE Negativo
     """)
@@ -79,13 +80,16 @@ if uploaded_file:
         (df_filtrado_uf[col_fat] >= faixa_fat[0]) & (df_filtrado_uf[col_fat] <= faixa_fat[1])
     ].copy()
 
-    # --- LÓGICA DE PERFORMANCE ---
+    # --- LÓGICA DE PERFORMANCE AJUSTADA ---
     def classificar(row):
         f = row[col_fat]
         d = row[col_dre]
-        if f >= 1000000: return '🔵 Alta'
-        elif f >= 400000: return '💎 Boa'
-        else: return '🔴 Ruim' if d < 0 else '🟡 Baixa'
+        if f >= 1000000: 
+            return '🔵 Alta'
+        elif f >= 400000:
+            return '💎 Boa' if d >= 0 else '🟠 Alto Custo'
+        else:
+            return '🟡 Baixa' if d >= 0 else '🔴 Ruim'
 
     df_view['Performance_Base'] = df_view.apply(classificar, axis=1)
     contagem_perf = df_view['Performance_Base'].value_counts()
@@ -95,12 +99,13 @@ if uploaded_file:
         return f"{perf_base} = {qtd} lojas"
 
     df_view['Performance'] = df_view['Performance_Base'].apply(formatar_legenda)
-    ordem_base = ['🔵 Alta', '💎 Boa', '🟡 Baixa', '🔴 Ruim']
+    ordem_base = ['🔵 Alta', '💎 Boa', '🟠 Alto Custo', '🟡 Baixa', '🔴 Ruim']
     ordem_legenda = [formatar_legenda(p) for p in ordem_base if p in df_view['Performance_Base'].values]
 
     cores_map = {
         formatar_legenda('🔵 Alta'): '#0000FF',
         formatar_legenda('💎 Boa'): '#27ae60',
+        formatar_legenda('🟠 Alto Custo'): '#e67e22', # Laranja para Alto Custo
         formatar_legenda('🟡 Baixa'): '#f1c40f',
         formatar_legenda('🔴 Ruim'): '#e74c3c'
     }
@@ -112,7 +117,7 @@ if uploaded_file:
         st.subheader(f"Resumo de Performance - {opcao_uf}")
         k1, k2, k3 = st.columns(3)
         k1.metric("Total Lojas", len(df_view))
-        k2.metric("Faturamento > 400k", len(df_view[df_view[col_fat] >= 400000]))
+        k2.metric("Lojas 'Vão Bem' (Boa/Alta)", len(df_view[df_view['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]))
         dre_medio = df_view[col_dre].mean()
         k3.metric("DRE Médio", f"{dre_medio*100:.2f}%")
 
@@ -125,15 +130,11 @@ if uploaded_file:
 
     with tab_dna:
         st.subheader("🧬 Análise de Variáveis de Sucesso")
-        
-        # VARIÁVEIS REMOVIDAS: col_demanda e col_populacao
         opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao] if c in df_view.columns]
         analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
-            # Gráfico Principal de DNA
             temp_df = df_view.copy()
-
             stats = temp_df.groupby([analise_alvo, 'Performance', 'Performance_Base']).agg({
                 col_loja: lambda x: "<br>".join(list(x)[:15]) + ("<br>..." if len(x) > 15 else ""),
                 col_id: 'count'
@@ -146,10 +147,8 @@ if uploaded_file:
                              color_discrete_map=cores_map, height=500)
             st.plotly_chart(fig_dna, use_container_width=True)
 
-            # --- GRÁFICO: PERFORMANCE POR TAMANHO DE CIDADE E LOCALIZAÇÃO ---
             st.markdown("---")
             st.subheader("📊 Onde estão as lojas que 'Vão Bem'?")
-            st.info("Este gráfico separa CENTRO vs BAIRRO e mostra a performance real em cada tamanho de cidade.")
             
             if col_localizacao in df_view.columns and col_porte in df_view.columns:
                 df_deep = df_view.groupby([col_porte, col_localizacao, 'Performance']).size().reset_index(name='qtd')
@@ -169,21 +168,14 @@ if uploaded_file:
                     color_discrete_map=cores_map,
                     height=600
                 )
-                
                 fig_deep.update_traces(textposition='outside')
-                fig_deep.update_layout(
-                    xaxis_title="Tamanho da Cidade",
-                    yaxis_title="Qtd de Lojas",
-                    legend_title="Performance",
-                    margin=dict(t=50)
-                )
-                
+                fig_deep.update_layout(xaxis_title="Tamanho da Cidade", yaxis_title="Qtd de Lojas", margin=dict(t=50))
                 fig_deep.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
                 st.plotly_chart(fig_deep, use_container_width=True)
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
-        cols_final = [col_id, col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_demanda, col_populacao, col_fat, col_dre, 'Performance_Base']
+        cols_final = [col_id, col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_fat, col_dre, 'Performance_Base']
         df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
         df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
         
@@ -191,8 +183,6 @@ if uploaded_file:
             df_tabela.style.format({
                 col_fat: "R$ {:,.2f}",
                 col_dre: "{:.2%}",
-                col_demanda: "R$ {:,.2f}",
-                col_populacao: "{:,.0f}",
                 'IDADE_LOJA': "{:.0f} anos"
             }), 
             use_container_width=True,
