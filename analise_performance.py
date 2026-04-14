@@ -105,13 +105,13 @@ if uploaded_file:
     cores_map = {
         formatar_legenda('🔵 Alta'): '#0000FF',
         formatar_legenda('💎 Boa'): '#27ae60',
-        formatar_legenda('🟠 Alto Custo'): '#e67e22', # Laranja para Alto Custo
+        formatar_legenda('🟠 Alto Custo'): '#e67e22',
         formatar_legenda('🟡 Baixa'): '#f1c40f',
         formatar_legenda('🔴 Ruim'): '#e74c3c'
     }
 
     # --- ABAS ---
-    tab_geo, tab_dna, tab_listagem = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes"])
+    tab_geo, tab_dna, tab_listagem, tab_analise = st.tabs(["🌎 Visão Geográfica", "🧬 DNA do Sucesso", "📋 Detalhes", "🧠 Análise Estratégica"])
 
     with tab_geo:
         st.subheader(f"Resumo de Performance - {opcao_uf}")
@@ -130,7 +130,7 @@ if uploaded_file:
 
     with tab_dna:
         st.subheader("🧬 Análise de Variáveis de Sucesso")
-        opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao] if c in df_view.columns]
+        opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao, col_estacionamento] if c in df_view.columns]
         analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
@@ -188,6 +188,67 @@ if uploaded_file:
             use_container_width=True,
             hide_index=True
         )
+
+    with tab_analise:
+        st.subheader("🧠 Relatório de Inteligência: O Perfil das Lojas +1MM")
+        
+        df_alta = df_view[df_view['Performance_Base'] == '🔵 Alta']
+        
+        if len(df_alta) > 0:
+            c1, c2 = st.columns([1, 1])
+            
+            with c1:
+                st.info(f"### 🎯 Fortalezas Identificadas ({len(df_alta)} lojas)")
+                
+                # Análise de Localização
+                loc_pref = df_alta[col_localizacao].mode()[0] if col_localizacao in df_alta.columns else "N/A"
+                st.write(f"**📍 Localização Dominante:** Lojas de alta performance estão majoritariamente em **{loc_pref}**.")
+                
+                # Análise de Porte de Cidade
+                porte_pref = df_alta[col_porte].mode()[0] if col_porte in df_alta.columns else "N/A"
+                st.write(f"**🏙️ Ambiente Ideal:** O porte de cidade mais comum para este faturamento é **{porte_pref}**.")
+                
+                # Análise de Estacionamento
+                if col_estacionamento in df_alta.columns:
+                    est_pref = df_alta[col_estacionamento].mode()[0]
+                    st.write(f"**🚗 Infraestrutura:** O padrão de estacionamento recorrente é **{est_pref}**.")
+
+                # Idade Média
+                idade_media = df_alta['IDADE_LOJA'].mean()
+                st.write(f"**⏳ Maturação:** A média de idade dessas lojas é de **{idade_media:.1f} anos**.")
+
+            with c2:
+                st.success("### 🚀 O que uma loja > 1MM precisa ter?")
+                st.markdown(f"""
+                Baseado nos dados reais das suas **{len(df_alta)} melhores unidades**, o "DNA" do sucesso exige:
+                
+                1.  **Foco em {loc_pref}:** Este ambiente concentra o maior volume de vendas.
+                2.  **Presença em cidades {porte_pref}:** Onde a densidade demográfica sustenta o ticket médio.
+                3.  **Eficiência de Margem:** O DRE médio deste grupo é de **{df_alta[col_dre].mean()*100:.1f}%**, garantindo que o faturamento vire lucro.
+                4.  **Consolidação:** Lojas que atingem este patamar geralmente possuem mais de **{int(idade_media)} anos** de operação.
+                """)
+                
+            st.markdown("---")
+            st.subheader("📊 Comparativo Visual: Alta Performance vs Restante")
+            
+            # Gráfico de comparação de Médias
+            comp_data = {
+                'Métrica': ['DRE Médio', 'Demanda FSJ (Média)', 'População 1km (Média)'],
+                'Lojas +1MM': [
+                    df_alta[col_dre].mean(), 
+                    df_alta[col_demanda].mean(), 
+                    df_alta[col_populacao].mean()
+                ],
+                'Outras Lojas': [
+                    df_view[df_view['Performance_Base'] != '🔵 Alta'][col_dre].mean(),
+                    df_view[df_view['Performance_Base'] != '🔵 Alta'][col_demanda].mean(),
+                    df_view[df_view['Performance_Base'] != '🔵 Alta'][col_populacao].mean()
+                ]
+            }
+            df_comp = pd.DataFrame(comp_data)
+            st.table(df_comp.set_index('Métrica'))
+        else:
+            st.warning("⚠️ Não há lojas com faturamento acima de R$ 1.000.000 na seleção atual para gerar o relatório.")
 
 else:
     st.info("👋 Por favor, carregue o arquivo Excel para iniciar a análise.")
