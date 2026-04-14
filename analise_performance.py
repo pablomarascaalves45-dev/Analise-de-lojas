@@ -23,6 +23,7 @@ if uploaded_file:
                 return col
         return nome_padrao
 
+    # Prioridade para o Nome da Loja
     col_loja = localizar_coluna(["LOJAS", "NOME", "ID_LOJA", "NOME DA LOJA"], "LOJAS")
     col_fat = localizar_coluna(["FATURAMENTO", "MAR'25", "MÉDIA FATURAMENTO", "SOMA DAS VENDAS"], "MÉDIA FATURAMENTO")
     col_dre = localizar_coluna(["DRE_AC", "FEV/26", "DRE FEV", "DRE ACUMULADO"], "DRE_AC FEV/26")
@@ -32,32 +33,26 @@ if uploaded_file:
     col_estacionamento = localizar_coluna(["ESTACIONAMENTO"], "ESTACIONAMENTO")
     col_abertura = localizar_coluna(["DATA DE ABERTURA", "ABERTURA"], "DATA DE ABERTURA")
     col_localizacao = localizar_coluna(["BAIRRO OU CENTRO", "LOCALIZACAO", "CENTRO"], "BAIRRO OU CENTRO")
-    
-    # NOVAS VARIÁVEIS
     col_demanda = localizar_coluna(["DEMANDA FSJ", "DEMANDA"], "DEMANDA FSJ RAIO DE 1 KM")
     col_populacao = localizar_coluna(["POPULAÇÃO RAIO", "POPULACAO"], "POPULAÇÃO RAIO DE 1KM")
 
     # --- TRATAMENTO DE VARIÁVEIS ---
-    
-    # Limpeza de strings para números (Demanda e População)
     for c in [col_demanda, col_populacao]:
         if c in df.columns:
             df[c] = df[c].astype(str).str.replace(r'[R$\.\s]', '', regex=True).str.replace(',', '.')
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
 
-    # Ajuste para Bairro/Centro (Tudo que não é Centro vira Bairro)
     if col_localizacao in df.columns:
         df[col_localizacao] = df[col_localizacao].astype(str).str.upper().str.strip()
         df[col_localizacao] = df[col_localizacao].apply(lambda x: "CENTRO" if "CENTRO" in x else "BAIRRO")
 
-    # Cálculo da idade
     if col_abertura in df.columns:
         df[col_abertura] = pd.to_datetime(df[col_abertura], errors='coerce')
         hoje = datetime.now()
         df['IDADE_LOJA'] = df[col_abertura].apply(lambda x: hoje.year - x.year if pd.notnull(x) else 0)
         df['FAIXA_IDADE'] = df['IDADE_LOJA'].apply(lambda x: f"{x} anos")
 
-    # --- BARRA LATERAL (FILTROS) ---
+    # --- FILTROS ---
     st.sidebar.header("⚙️ Filtros")
     ufs = sorted(df[col_uf].dropna().unique().tolist())
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
@@ -73,7 +68,7 @@ if uploaded_file:
         (df_filtrado_uf[col_fat] >= faixa_fat[0]) & (df_filtrado_uf[col_fat] <= faixa_fat[1])
     ].copy()
 
-    # --- LÓGICA DE PERFORMANCE ---
+    # --- PERFORMANCE ---
     def classificar(row):
         f = row[col_fat]
         d = row[col_dre]
@@ -82,7 +77,6 @@ if uploaded_file:
         else: return '🔴 Ruim' if d < 0 else '🟡 Baixa'
 
     df_view['Performance_Base'] = df_view.apply(classificar, axis=1)
-    
     contagem_perf = df_view['Performance_Base'].value_counts()
     def formatar_legenda(perf_base):
         qtd = contagem_perf.get(perf_base, 0)
@@ -109,23 +103,22 @@ if uploaded_file:
         dre_medio = df_view[col_dre].mean()
         k3.metric("DRE Médio", f"{dre_medio*100:.2f}%")
 
-        # AJUSTE: hover_name definido como o nome da loja
         fig_scat = px.scatter(df_view, x=col_fat, y=col_dre, color="Performance", 
-                             hover_name=col_loja, 
+                             hover_name=col_loja, # Nome da loja ao passar o mouse
                              category_orders={"Performance": ordem_legenda},
-                             color_discrete_map=cores_map, height=500,
-                             labels={col_fat: "Faturamento Médio", col_dre: "DRE Acumulado %"})
+                             color_discrete_map=cores_map, height=500)
         fig_scat.add_hline(y=0, line_dash="dash", line_color="red")
         st.plotly_chart(fig_scat, use_container_width=True)
 
     with tab_dna:
         st.subheader("🧬 Análise de Variáveis de Sucesso")
-        
         opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao, col_demanda, col_populacao] if c in df_view.columns]
         analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
             temp_df = df_view.copy()
+            
+            # Ajuste para variáveis numéricas: Agrupar mas manter o nome da loja no texto
             if analise_alvo in [col_demanda, col_populacao]:
                 temp_df[analise_alvo] = pd.qcut(temp_df[analise_alvo], q=4, duplicates='drop').astype(str)
 
@@ -134,38 +127,27 @@ if uploaded_file:
             stats = stats.merge(totais, on=analise_alvo)
             stats['porcentagem'] = (stats['contagem'] / stats['total_grupo'] * 100).round(1)
             
-            stats['texto'] = "<b>Total: " + stats['total_grupo'].astype(str) + "</b><br>" + \
-                             stats['Performance_Base'].str.split(" ").str[1] + ": " + stats['porcentagem'].astype(str) + "%"
+            # AJUSTE NO TEXTO: Agora focado na Performance e Contagem
+            stats['texto'] = "<b>" + stats['Performance_Base'].str.split(" ").str[1] + "</b><br>" + \
+                             stats['contagem'].astype(str) + " lojas (" + stats['porcentagem'].astype(str) + "%)"
 
             fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
                              barmode='group', text='texto',
                              category_orders={"Performance": ordem_legenda},
                              color_discrete_map=cores_map, height=500)
             
-            fig_dna.update_traces(textposition='outside', textfont=dict(size=12, color="black"))
+            fig_dna.update_traces(textposition='outside', textfont=dict(size=11, color="black"))
             st.plotly_chart(fig_dna, use_container_width=True)
 
+            # Insight Dinâmico com Nome do DNA
             sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
             if not sucesso.empty:
                 melhor = sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
                 st.info(f"💡 Em **{opcao_uf}**, o melhor DNA para **{analise_alvo}** é: **{melhor}**")
-            
-            st.markdown("---")
-            st.subheader("🏙️ Performance por Tamanho de Cidade e Localização")
-            
-            if col_porte in df_view.columns and col_localizacao in df_view.columns:
-                df_cruzado = df_view.groupby([col_porte, col_localizacao])[col_fat].mean().reset_index()
-                fig_cruzado = px.bar(df_cruzado, x=col_porte, y=col_fat, color=col_localizacao,
-                                     barmode='group', title="Faturamento Médio: Porte da Cidade vs Localização",
-                                     labels={col_fat: "Faturamento Médio (R$)"},
-                                     color_discrete_sequence=["#3498db", "#9b59b6"])
-                fig_cruzado.update_layout(yaxis_tickformat="R$ ,.0f")
-                st.plotly_chart(fig_cruzado, use_container_width=True)
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
-        # AJUSTE: col_loja garantido na primeira posição da tabela
-        cols_final = [col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_demanda, col_populacao, col_fat, col_dre, 'Performance_Base']
+        cols_final = [col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_demanda, col_populacao, col_fat, col_dre, 'Performance_Base']
         df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
         df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
         
@@ -177,7 +159,8 @@ if uploaded_file:
                 col_populacao: "{:,.0f}",
                 'IDADE_LOJA': "{:.0f} anos"
             }), 
-            use_container_width=True
+            use_container_width=True,
+            hide_index=True # Remove a coluna de índices numéricos para limpar a visão
         )
 
 else:
