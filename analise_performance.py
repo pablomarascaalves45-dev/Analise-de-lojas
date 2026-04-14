@@ -33,13 +33,21 @@ if uploaded_file:
     col_abertura = localizar_coluna(["DATA DE ABERTURA", "ABERTURA"], "DATA DE ABERTURA")
     col_localizacao = localizar_coluna(["BAIRRO OU CENTRO", "LOCALIZACAO", "CENTRO"], "BAIRRO OU CENTRO")
 
-    # --- TRATAMENTO DE NOVAS VARIÁVEIS (IDADE E LOCAL) ---
-    # Cálculo da Idade
+    # --- TRATAMENTO DE VARIÁVEIS ESPECÍFICAS ---
+    
+    # 1. Ajuste Bairro vs Centro: Tudo que não for CENTRO vira BAIRRO
+    if col_localizacao in df.columns:
+        df[col_localizacao] = df[col_localizacao].astype(str).str.upper().str.strip()
+        df[col_localizacao] = df[col_localizacao].apply(lambda x: "CENTRO" if "CENTRO" in x else "BAIRRO")
+
+    # 2. Cálculo da Idade em Anos
     if col_abertura in df.columns:
         df[col_abertura] = pd.to_datetime(df[col_abertura], errors='coerce')
         hoje = datetime.now()
         df['IDADE_LOJA'] = df[col_abertura].apply(lambda x: hoje.year - x.year if pd.notnull(x) else 0)
-    
+        # Criar faixas de idade para o gráfico de DNA
+        df['FAIXA_IDADE'] = df['IDADE_LOJA'].apply(lambda x: f"{x} anos")
+
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.header("⚙️ Filtros")
     ufs = sorted(df[col_uf].dropna().unique().tolist())
@@ -104,8 +112,8 @@ if uploaded_file:
     with tab_dna:
         st.subheader("🧬 Análise de Variáveis de Sucesso")
         
-        # Lista de opções atualizada com Bairro/Centro
-        opcoes_dna = [c for c in [col_porte, col_posicao, col_estacionamento, col_localizacao] if c in df.columns]
+        # Opções de análise incluindo Localização e Faixa de Idade
+        opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao, col_estacionamento] if c in df_view.columns]
         analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
         
         if not df_view.empty and analise_alvo:
@@ -125,7 +133,6 @@ if uploaded_file:
             fig_dna.update_traces(textposition='outside', textfont=dict(size=12, color="black"))
             st.plotly_chart(fig_dna, use_container_width=True)
 
-            # Insight Dinâmico
             sucesso = stats[stats['Performance_Base'].isin(['🔵 Alta', '💎 Boa'])]
             if not sucesso.empty:
                 melhor = sucesso.groupby(analise_alvo)['contagem'].sum().idxmax()
@@ -133,10 +140,8 @@ if uploaded_file:
 
     with tab_listagem:
         st.subheader("📋 Detalhamento das Lojas")
-        # Incluindo IDADE_LOJA e LOCALIZAÇÃO na tabela
         cols_final = [col_loja, col_uf, 'IDADE_LOJA', col_localizacao, col_porte, col_posicao, col_fat, col_dre, 'Performance_Base']
         df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
-        
         df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
         
         st.dataframe(
