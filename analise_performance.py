@@ -52,7 +52,7 @@ if uploaded_file:
         df['IDADE_LOJA'] = df[col_abertura].apply(lambda x: hoje.year - x.year if pd.notnull(x) else 0)
         df['FAIXA_IDADE'] = df['IDADE_LOJA'].apply(lambda x: f"{x} anos")
 
-    # --- FILTROS ---
+    # --- FILTROS (SIDEBAR) ---
     st.sidebar.header("⚙️ Filtros")
     ufs = sorted(df[col_uf].dropna().unique().tolist())
     opcao_uf = st.sidebar.selectbox("Estado:", ["Todos os Estados"] + ufs)
@@ -64,6 +64,19 @@ if uploaded_file:
     fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
     faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
     
+    # AJUSTE: Exibe os valores selecionados no slider
+    st.sidebar.write(f"📊 **Selecionado:** R$ {faixa_fat[0]:,.0f} a R$ {faixa_fat[1]:,.0f}")
+    
+    # AJUSTE: Legenda de critérios de Performance na Sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📌 Critérios de Performance")
+    st.sidebar.markdown("""
+    * **🔵 Alta:** Fat. ≥ R$ 1.000.000
+    * **💎 Boa:** Fat. ≥ R$ 400.000
+    * **🟡 Baixa:** Fat. < R$ 400.000 e DRE Positivo
+    * **🔴 Ruim:** Fat. < R$ 400.000 e DRE Negativo
+    """)
+
     df_view = df_filtrado_uf[
         (df_filtrado_uf[col_fat] >= faixa_fat[0]) & (df_filtrado_uf[col_fat] <= faixa_fat[1])
     ].copy()
@@ -121,9 +134,8 @@ if uploaded_file:
             if analise_alvo in [col_demanda, col_populacao]:
                 temp_df[analise_alvo] = pd.qcut(temp_df[analise_alvo], q=4, duplicates='drop').astype(str)
 
-            # AJUSTE: Criar lista de lojas por grupo para o Hover
             stats = temp_df.groupby([analise_alvo, 'Performance', 'Performance_Base']).agg({
-                col_loja: lambda x: "<br>".join(list(x)[:15]) + ("<br>..." if len(x) > 15 else ""), # Lista as primeiras 15 lojas
+                col_loja: lambda x: "<br>".join(list(x)[:15]) + ("<br>..." if len(x) > 15 else ""),
                 col_id: 'count'
             }).reset_index()
             stats.rename(columns={col_id: 'contagem', col_loja: 'lista_lojas'}, inplace=True)
@@ -135,7 +147,6 @@ if uploaded_file:
             stats['texto_barra'] = "<b>" + stats['Performance_Base'].str.split(" ").str[1] + "</b><br>" + \
                                    stats['contagem'].astype(str) + " lojas"
 
-            # Hover personalizado com a lista de lojas
             fig_dna = px.bar(stats, x=analise_alvo, y='contagem', color='Performance',
                              barmode='group', text='texto_barra',
                              hover_data={'Performance': True, 'contagem': True, 'lista_lojas': True, 'texto_barra': False},
