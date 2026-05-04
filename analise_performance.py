@@ -32,7 +32,6 @@ df = pd.read_excel(uploaded_file)
 
 df.columns = [str(c).strip() for c in df.columns]
 
-
 # --- MAPEAMENTO DINÂMICO DE COLUNAS ---
 
 def localizar_coluna(lista_termos, nome_padrao):
@@ -121,14 +120,11 @@ df_filtrado_uf[col_fat] = pd.to_numeric(df_filtrado_uf[col_fat], errors='coerce'
 
 df_filtrado_uf[col_dre] = pd.to_numeric(df_filtrado_uf[col_dre], errors='coerce').fillna(0)
 
-
 fat_min, fat_max = float(df_filtrado_uf[col_fat].min()), float(df_filtrado_uf[col_fat].max())
 
 faixa_fat = st.sidebar.slider("Faixa de Faturamento:", fat_min, fat_max, (fat_min, fat_max), format="R$ {:,.0f}")
 
-
 st.sidebar.write(f"📊 **Selecionado:** R$ {faixa_fat[0]:,.0f} a R$ {faixa_fat[1]:,.0f}")
-
 
 st.sidebar.markdown("---")
 
@@ -183,7 +179,6 @@ return '🟡 Baixa' if d >= 0 else '🔴 Ruim'
 df_view['Performance_Base'] = df_view.apply(classificar, axis=1)
 
 contagem_perf = df_view['Performance_Base'].value_counts()
-
 
 def formatar_legenda(perf_base):
 
@@ -261,7 +256,6 @@ opcoes_dna = [c for c in [col_localizacao, 'FAIXA_IDADE', col_porte, col_posicao
 
 analise_alvo = st.selectbox("Escolha a variável para análise de DNA:", opcoes_dna)
 
-
 if not df_view.empty and analise_alvo:
 
 temp_df = df_view.copy()
@@ -294,11 +288,9 @@ st.markdown("---")
 
 st.subheader("📊 Onde estão as lojas que 'Vão Bem'?")
 
-
 if col_localizacao in df_view.columns and col_porte in df_view.columns:
 
 df_deep = df_view.groupby([col_porte, col_localizacao, 'Performance']).size().reset_index(name='qtd')
-
 
 fig_deep = px.bar(
 
@@ -350,7 +342,6 @@ df_tabela = df_view[[c for c in cols_final if c in df_view.columns]].copy()
 
 df_tabela = df_tabela.sort_values(by=col_fat, ascending=False)
 
-
 st.dataframe(
 
 df_tabela.style.format({
@@ -375,19 +366,15 @@ with tab_analise:
 
 st.subheader("🧠 Relatório de Inteligência: O Perfil das Lojas +1MM")
 
-
 df_alta = df_view[df_view['Performance_Base'] == '🔵 Alta']
-
 
 if len(df_alta) > 0:
 
 c1, c2 = st.columns([1, 1])
 
-
 with c1:
 
 st.info(f"### 🎯 Fortalezas Identificadas ({len(df_alta)} lojas)")
-
 
 # Análise de Localização
 
@@ -395,13 +382,11 @@ loc_pref = df_alta[col_localizacao].mode()[0] if col_localizacao in df_alta.colu
 
 st.write(f"**📍 Localização Dominante:** Lojas de alta performance estão majoritariamente em **{loc_pref}**.")
 
-
 # Análise de Porte de Cidade
 
 porte_pref = df_alta[col_porte].mode()[0] if col_porte in df_alta.columns else "N/A"
 
 st.write(f"**🏙️ Ambiente Ideal:** O porte de cidade mais comum para este faturamento é **{porte_pref}**.")
-
 
 # Análise de Estacionamento
 
@@ -429,7 +414,6 @@ st.markdown(f"""
 
 Baseado nos dados reais das suas **{len(df_alta)} melhores unidades**, o "DNA" do sucesso exige:
 
-
 1. **Foco em {loc_pref}:** Este ambiente concentra o maior volume de vendas.
 
 2. **Presença em cidades {porte_pref}:** Onde a densidade demográfica sustenta o ticket médio.
@@ -440,11 +424,9 @@ Baseado nos dados reais das suas **{len(df_alta)} melhores unidades**, o "DNA" d
 
 """)
 
-
 st.markdown("---")
 
 st.subheader("📊 Comparativo Visual: Alta Performance vs Restante")
-
 
 # Gráfico de comparação de Médias
 
