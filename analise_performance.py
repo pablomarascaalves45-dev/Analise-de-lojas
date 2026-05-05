@@ -45,8 +45,8 @@ if uploaded_file is not None:
     # --- ABA 1: DASHBOARD ---
     with tab_dashboard:
         st.sidebar.header("Filtros de Localização")
-        estados = sorted([x for x in df["UF"].unique() if x])
-        estados_selecionados = st.sidebar.multiselect("Estado (UF):", options=estados, default=estados)
+        estados_lista = sorted([x for x in df["UF"].unique() if x])
+        estados_selecionados = st.sidebar.multiselect("Estado (UF):", options=estados_lista, default=estados_lista)
 
         df_uf = df[df["UF"].isin(estados_selecionados)]
         portes_disponiveis = sorted(df_uf["TAMANHO DA CIDADE"].unique())
@@ -66,17 +66,16 @@ if uploaded_file is not None:
         ]
 
         if not df_visualizacao.empty:
-            # Métricas Principais
             m1, m2, m3, m4, m5, m6 = st.columns(6)
             
             venda_total = df_visualizacao["VENDA MAR'26"].sum()
-            qtd_lojas = df_visualizacao["LOJAS"].nunique()
+            qtd_lojas_total = df_visualizacao["LOJAS"].nunique()
             media_dre = df_visualizacao["DRE FEV'26"].mean() * 100 
             ticket_medio = df_visualizacao["TICKET FSJ MAR'26"].mean()
             media_faturamento = df_visualizacao["MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"].mean()
             media_populacao = df_visualizacao["POPULAÇÃO RAIO DE 1KM"].mean()
 
-            m1.metric("Qtd de Lojas", f"{qtd_lojas}")
+            m1.metric("Qtd de Lojas", f"{qtd_lojas_total}")
             m2.metric("Venda Total", f"R$ {venda_total/1_000_000:.1f}M")
             m3.metric("Média DRE", f"{media_dre:.2f}%")
             m4.metric("Ticket Médio", f"R$ {ticket_medio:.2f}")
@@ -89,7 +88,6 @@ if uploaded_file is not None:
                                      ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
             
             col_v1, col_v2 = st.columns(2)
-
             with col_v1:
                 df_porte_med = df_visualizacao.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
                 fig_porte_med = px.bar(
@@ -108,32 +106,25 @@ if uploaded_file is not None:
                 )
                 st.plotly_chart(fig_tree_med, use_container_width=True)
 
-            if foco_porte == "Ver Todos":
-                df_tabela_final = df_visualizacao
-            else:
-                df_tabela_final = df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
-
+            df_tabela_final = df_visualizacao if foco_porte == "Ver Todos" else df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
             st.subheader(f"Dados Detalhados: {foco_porte}")
             st.dataframe(df_tabela_final, use_container_width=True)
         else:
             st.warning("Nenhum dado encontrado para os filtros selecionados.")
 
-    # --- ABA 2: EXPANSÃO (COM SEUS AJUSTES) ---
+    # --- ABA 2: EXPANSÃO ---
     with tab_expansao:
         st.header("Análise Estratégica para Expansão")
         
-        # --- CONTROLES DE PARÂMETROS ---
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             fat_min = st.slider("Faturamento Mínimo Desejado (R$):", 0, 1500000, 500000, step=50000)
         with col_c2:
             dre_min = st.slider("Rentabilidade DRE Mínima (%):", -20.0, 40.0, 0.0, step=0.5) / 100
 
-        # Filtro de sucesso baseado nos sliders
         df_sucesso = df[(df["VENDA MAR'26"] > fat_min) & (df["DRE FEV'26"] > dre_min)].copy()
 
         if not df_sucesso.empty:
-            # Agrupamento para o gráfico
             df_analise = df_sucesso.groupby(["UF", "TAMANHO DA CIDADE"]).agg({
                 "VENDA MAR'26": "mean",
                 "DRE FEV'26": "mean",
@@ -141,52 +132,51 @@ if uploaded_file is not None:
             }).reset_index()
 
             df_analise.columns = ["Estado", "Porte da Cidade", "Faturamento Médio", "Margem DRE Média", "Qtd Lojas"]
-            
-            # Texto para o topo das barras
             df_analise["label_topo"] = df_analise["Qtd Lojas"].astype(str) + " Lojas"
 
-            # Gráfico de barras
             fig_exp = px.bar(
-                df_analise, 
-                x="Estado", 
-                y="Faturamento Médio",
-                color="Porte da Cidade",
-                title="Performance Média por Estado (Amostragem no Topo)",
-                barmode="group",
-                text="label_topo",
-                # Ajuste: Removendo nomes dos eixos conforme solicitado
-                labels={"Faturamento Médio": "Faturamento Médio (R$)", "Estado": "", "Porte da Cidade": ""}
+                df_analise, x="Estado", y="Faturamento Médio", color="Porte da Cidade",
+                title="Performance Média por Estado (Amostragem no Topo)", barmode="group",
+                text="label_topo", labels={"Faturamento Médio": "Faturamento Médio (R$)", "Estado": "", "Porte da Cidade": ""}
             )
             
-            fig_exp.update_traces(
-                textposition='outside',
-                textfont=dict(size=14, color="black"),
-                cliponaxis=False
-            )
-            
-            fig_exp.update_layout(
-                xaxis_title=None, 
-                yaxis_tickprefix="R$ ", 
-                yaxis_tickformat=",.",
-                legend=dict(title=None, orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
-            )
+            fig_exp.update_traces(textposition='outside', textfont=dict(size=14, color="black"), cliponaxis=False)
+            fig_exp.update_layout(xaxis_title=None, yaxis_tickprefix="R$ ", yaxis_tickformat=",.",
+                                  legend=dict(title=None, orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5))
             
             st.plotly_chart(fig_exp, use_container_width=True)
 
-            # --- LÓGICA DE RECOMENDAÇÃO (ENTRE GRÁFICO E MATRIZ) ---
-            df_recomendacao = df_sucesso.groupby("TAMANHO DA CIDADE").agg({
-                "VENDA MAR'26": "mean",
-                "DRE FEV'26": "mean"
-            }).reset_index()
+            # --- NOVA LÓGICA DE RECOMENDAÇÃO INDIVIDUALIZADA POR ESTADO ---
+            st.subheader("Observações Estratégicas por Estado")
             
-            # Identifica o porte com maior média de faturamento que passou nos filtros
-            melhor_porte_row = df_recomendacao.sort_values(by="VENDA MAR'26", ascending=False).iloc[0]
-            melhor_nome = melhor_porte_row["TAMANHO DA CIDADE"]
-            melhor_fat = melhor_porte_row["VENDA MAR'26"]
+            # Pegamos os estados que aparecem no filtro de sucesso
+            estados_sucesso = sorted(df_sucesso["UF"].unique())
+            
+            for estado in estados_sucesso:
+                # Dados específicos do estado dentro das lojas de sucesso
+                df_estado_sucesso = df_sucesso[df_sucesso["UF"] == estado]
+                total_lojas_estado = len(df_estado_sucesso)
+                
+                # Agrupar por porte para achar o melhor
+                resumo_porte = df_estado_sucesso.groupby("TAMANHO DA CIDADE").agg({
+                    "VENDA MAR'26": "mean",
+                    "LOJAS": "count"
+                }).reset_index()
+                
+                # Critério: Maior faturamento médio
+                melhor_porte_row = resumo_porte.sort_values(by="VENDA MAR'26", ascending=False).iloc[0]
+                
+                nome_porte = melhor_porte_row["TAMANHO DA CIDADE"]
+                fat_medio = melhor_porte_row["VENDA MAR'26"]
+                qtd_no_porte = melhor_porte_row["LOJAS"]
+                representatividade = (qtd_no_porte / total_lojas_estado) * 100
+                
+                # Exibição do Insight por Estado
+                st.success(f"📍 **Estado: {estado}** | O melhor porte para expandir é **{nome_porte}**. "
+                           f"Ele possui o maior faturamento médio (**R$ {fat_medio:,.2f}**) e representa "
+                           f"**{representatividade:.1f}%** das unidades de sucesso mapeadas neste estado.")
 
-            st.success(f"💡 **Melhor Oportunidade de Expansão:** O porte de cidade **{melhor_nome}** é o mais promissor, com um faturamento médio de **R$ {melhor_fat:,.2f}** entre as unidades de sucesso.")
-
-            # Matriz de Oportunidade
+            st.divider()
             st.subheader("Matriz de Oportunidade Detalhada")
             st.dataframe(
                 df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False]).style.format({
