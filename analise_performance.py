@@ -33,88 +33,138 @@ def load_data(file):
 if uploaded_file is not None:
     df = load_data(uploaded_file)
 
-    # --- SIDEBAR / FILTROS ---
-    st.sidebar.header("Filtros de Localização")
-    estados = sorted([x for x in df["UF"].unique() if x])
-    estados_selecionados = st.sidebar.multiselect("Estado (UF):", options=estados, default=estados)
+    # --- CRIAÇÃO DAS ABAS ---
+    tab_dashboard, tab_expansao = st.tabs(["Dashboard de Performance", "Relatório de Expansão"])
 
-    df_uf = df[df["UF"].isin(estados_selecionados)]
-    
-    portes_disponiveis = sorted(df_uf["TAMANHO DA CIDADE"].unique())
-    portes_selecionados = st.sidebar.multiselect("Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
+    with tab_dashboard:
+        # --- SIDEBAR / FILTROS (Mantidos conforme solicitado) ---
+        st.sidebar.header("Filtros de Localização")
+        estados = sorted([x for x in df["UF"].unique() if x])
+        estados_selecionados = st.sidebar.multiselect("Estado (UF):", options=estados, default=estados)
 
-    # Base filtrada pela sidebar
-    df_filtrado_base = df_uf[df_uf["TAMANHO DA CIDADE"].isin(portes_selecionados)]
-
-    cidades = sorted([x for x in df_filtrado_base["CIDADE"].unique() if x])
-    cidades_selecionadas = st.sidebar.multiselect("Cidade:", options=cidades, default=cidades)
-
-    mesos_list = [x for x in df_filtrado_base["MESORREGIÃO"].unique() if x and x != 'Não Informado']
-    mesos = sorted(mesos_list)
-    mesos_selecionados = st.sidebar.multiselect("Mesorregião:", options=mesos, default=mesos)
-
-    # DataFrame principal para os gráficos
-    df_visualizacao = df_filtrado_base[
-        (df_filtrado_base["CIDADE"].isin(cidades_selecionadas)) & 
-        (df_filtrado_base["MESORREGIÃO"].isin(mesos_selecionados))
-    ]
-
-    if not df_visualizacao.empty:
-        # --- KPIs PRINCIPAIS ---
-        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        df_uf = df[df["UF"].isin(estados_selecionados)]
         
-        venda_total = df_visualizacao["VENDA MAR'26"].sum()
-        qtd_lojas = df_visualizacao["LOJAS"].nunique()
-        media_dre = df_visualizacao["DRE FEV'26"].mean() * 100 
-        ticket_medio = df_visualizacao["TICKET FSJ MAR'26"].mean()
-        media_faturamento = df_visualizacao["MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"].mean()
-        media_populacao = df_visualizacao["POPULAÇÃO RAIO DE 1KM"].mean()
+        portes_disponiveis = sorted(df_uf["TAMANHO DA CIDADE"].unique())
+        portes_selecionados = st.sidebar.multiselect("Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
 
-        m1.metric("Qtd de Lojas", f"{qtd_lojas}")
-        m2.metric("Venda Total", f"R$ {venda_total/1_000_000:.1f}M")
-        m3.metric("Média DRE", f"{media_dre:.2f}%")
-        m4.metric("Ticket Médio", f"R$ {ticket_medio:.2f}")
-        m5.metric("Média Fat. Anual", f"R$ {media_faturamento:,.0f}")
-        m6.metric("Média População (1km)", f"{int(media_populacao):,}")
+        df_filtrado_base = df_uf[df_uf["TAMANHO DA CIDADE"].isin(portes_selecionados)]
 
-        st.divider()
+        cidades = sorted([x for x in df_filtrado_base["CIDADE"].unique() if x])
+        cidades_selecionadas = st.sidebar.multiselect("Cidade:", options=cidades, default=cidades)
 
-        # --- SEÇÃO DE ANÁLISE VISUAL ---
-        st.subheader("Eficiência e Hierarquia")
-        
-        foco_porte = st.selectbox("Filtrar detalhamento por Porte:", 
-                                 ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
-        
-        col_v1, col_v2 = st.columns(2)
+        mesos_list = [x for x in df_filtrado_base["MESORREGIÃO"].unique() if x and x != 'Não Informado']
+        mesos = sorted(mesos_list)
+        mesos_selecionados = st.sidebar.multiselect("Mesorregião:", options=mesos, default=mesos)
 
-        with col_v1:
-            df_porte_med = df_visualizacao.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
-            fig_porte_med = px.bar(
-                df_porte_med, x="MESORREGIÃO", y="VENDA MAR'26", color="TAMANHO DA CIDADE",
-                title="Faturamento Médio: Região vs Porte", barmode="group",
-                color_discrete_sequence=px.colors.qualitative.Prism,
-                labels={"VENDA MAR'26": "Média (R$)"}
-            )
-            st.plotly_chart(fig_porte_med, use_container_width=True)
+        df_visualizacao = df_filtrado_base[
+            (df_filtrado_base["CIDADE"].isin(cidades_selecionadas)) & 
+            (df_filtrado_base["MESORREGIÃO"].isin(mesos_selecionados))
+        ]
 
-        with col_v2:
-            fig_tree_med = px.treemap(
-                df_visualizacao, path=["MESORREGIÃO", "TAMANHO DA CIDADE", "CIDADE"], 
-                values="VENDA MAR'26", color="DRE FEV'26", color_continuous_scale="RdYlGn",
-                title="Hierarquia de Lojas e Rentabilidade"
-            )
-            st.plotly_chart(fig_tree_med, use_container_width=True)
+        if not df_visualizacao.empty:
+            # --- KPIs PRINCIPAIS ---
+            m1, m2, m3, m4, m5, m6 = st.columns(6)
+            
+            venda_total = df_visualizacao["VENDA MAR'26"].sum()
+            qtd_lojas = df_visualizacao["LOJAS"].nunique()
+            media_dre = df_visualizacao["DRE FEV'26"].mean() * 100 
+            ticket_medio = df_visualizacao["TICKET FSJ MAR'26"].mean()
+            media_faturamento = df_visualizacao["MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"].mean()
+            media_populacao = df_visualizacao["POPULAÇÃO RAIO DE 1KM"].mean()
 
-        # --- LÓGICA DE FILTRAGEM DA TABELA FINAL ---
-        if foco_porte == "Ver Todos":
-            df_tabela_final = df_visualizacao
+            m1.metric("Qtd de Lojas", f"{qtd_lojas}")
+            m2.metric("Venda Total", f"R$ {venda_total/1_000_000:.1f}M")
+            m3.metric("Média DRE", f"{media_dre:.2f}%")
+            m4.metric("Ticket Médio", f"R$ {ticket_medio:.2f}")
+            m5.metric("Média Fat. Anual", f"R$ {media_faturamento:,.0f}")
+            m6.metric("Média População (1km)", f"{int(media_populacao):,}")
+
+            st.divider()
+
+            st.subheader("Eficiência e Hierarquia")
+            foco_porte = st.selectbox("Filtrar detalhamento por Porte:", 
+                                     ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
+            
+            col_v1, col_v2 = st.columns(2)
+
+            with col_v1:
+                df_porte_med = df_visualizacao.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
+                fig_porte_med = px.bar(
+                    df_porte_med, x="MESORREGIÃO", y="VENDA MAR'26", color="TAMANHO DA CIDADE",
+                    title="Faturamento Médio: Região vs Porte", barmode="group",
+                    color_discrete_sequence=px.colors.qualitative.Prism,
+                    labels={"VENDA MAR'26": "Média (R$)"}
+                )
+                st.plotly_chart(fig_porte_med, use_container_width=True)
+
+            with col_v2:
+                fig_tree_med = px.treemap(
+                    df_visualizacao, path=["MESORREGIÃO", "TAMANHO DA CIDADE", "CIDADE"], 
+                    values="VENDA MAR'26", color="DRE FEV'26", color_continuous_scale="RdYlGn",
+                    title="Hierarquia de Lojas e Rentabilidade"
+                )
+                st.plotly_chart(fig_tree_med, use_container_width=True)
+
+            if foco_porte == "Ver Todos":
+                df_tabela_final = df_visualizacao
+            else:
+                df_tabela_final = df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
+
+            st.subheader(f"Dados Detalhados: {foco_porte}")
+            st.dataframe(df_tabela_final, use_container_width=True)
         else:
-            df_tabela_final = df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
+            st.warning("Nenhum dado encontrado para os parâmetros selecionados.")
 
-        st.subheader(f"Dados Detalhados: {foco_porte}")
-        st.dataframe(df_tabela_final, use_container_width=True)
-    else:
-        st.warning("Nenhum dado encontrado para os parâmetros selecionados.")
+    with tab_expansao:
+        st.header("Análise Estratégica para Expansão")
+        st.markdown("""
+        Este relatório identifica os melhores portes de cidade para expansão baseando-se em dois critérios de sucesso:
+        1. **Faturamento Médio** > R$ 500.000
+        2. **DRE** Positivo (Rentabilidade acima de 0%)
+        """)
+
+        # Filtro de Sucesso: Faturamento > 500k e DRE > 0
+        df_sucesso = df[(df["VENDA MAR'26"] > 500000) & (df["DRE FEV'26"] > 0)].copy()
+
+        if not df_sucesso.empty:
+            # Agrupamento para encontrar o melhor porte por Estado
+            # Calculamos a média de faturamento e a rentabilidade média para validar
+            df_analise = df_sucesso.groupby(["UF", "TAMANHO DA CIDADE"]).agg({
+                "VENDA MAR'26": "mean",
+                "DRE FEV'26": "mean",
+                "LOJAS": "count"
+            }).reset_index()
+
+            df_analise.columns = ["Estado", "Porte da Cidade", "Faturamento Médio", "Margem DRE Média", "Qtd Lojas Sucesso"]
+
+            # Ordenar para mostrar os melhores resultados primeiro
+            df_analise = df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False])
+
+            # Gráfico de Recomendação
+            fig_exp = px.bar(
+                df_analise, 
+                x="Estado", 
+                y="Faturamento Médio", 
+                color="Porte da Cidade",
+                title="Portes de Cidade com Faturamento > 500k e DRE Positivo por Estado",
+                barmode="group",
+                text_auto='.2s',
+                labels={"Faturamento Médio": "Faturamento Médio (R$)"}
+            )
+            st.plotly_chart(fig_exp, use_container_width=True)
+
+            st.subheader("Matriz de Oportunidade por Estado")
+            st.dataframe(
+                df_analise.style.format({
+                    "Faturamento Médio": "R$ {:,.2f}",
+                    "Margem DRE Média": "{:.2%}"
+                }), 
+                use_container_width=True
+            )
+            
+            st.info("💡 Dica: Os portes listados acima representam onde o modelo de negócio já opera com lucro e alto faturamento.")
+        else:
+            st.error("Não foram encontradas cidades que atendam simultaneamente aos critérios de Faturamento > 500k e DRE Positivo.")
 
 else:
     st.info("Aguardando upload do arquivo de dados para processamento.")
