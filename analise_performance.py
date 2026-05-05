@@ -2,9 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Se você puder instalar: pip install streamlit-plotly-events
-# Caso contrário, usaremos a lógica de filtros vinculados abaixo
-
 st.set_page_config(page_title="Laboratório de Lojas", layout="wide")
 
 st.title("📊 Laboratório de Performance de Lojas")
@@ -43,12 +40,10 @@ if uploaded_file is not None:
 
     df_uf = df[df["UF"].isin(estados_selecionados)]
     
-    # --- NOVO: FILTRO DINÂMICO DE PORTE (Aumenta a interatividade) ---
-    st.sidebar.subheader("Filtrar por Porte")
     portes_disponiveis = sorted(df_uf["TAMANHO DA CIDADE"].unique())
-    # "Todos" por padrão para não limitar a visão inicial
-    portes_selecionados = st.sidebar.multiselect("Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
+    portes_selecionados = st.sidebar.multiselect("Filtrar por Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
 
+    # Base filtrada pela sidebar
     df_filtrado_base = df_uf[df_uf["TAMANHO DA CIDADE"].isin(portes_selecionados)]
 
     cidades = sorted([x for x in df_filtrado_base["CIDADE"].unique() if x])
@@ -58,13 +53,14 @@ if uploaded_file is not None:
     mesos = sorted(mesos_list)
     mesos_selecionados = st.sidebar.multiselect("Selecione a Mesorregião:", options=mesos, default=mesos)
 
-    # Filtragem Final que alimenta os gráficos
+    # DataFrame principal para os gráficos
     df_visualizacao = df_filtrado_base[
         (df_filtrado_base["CIDADE"].isin(cidades_selecionadas)) & 
         (df_filtrado_base["MESORREGIÃO"].isin(mesos_selecionados))
     ]
 
-    if not df_visual_final.empty:
+    # CORREÇÃO: Usando a variável correta (df_visualizacao)
+    if not df_visualizacao.empty:
         # --- KPIs PRINCIPAIS ---
         m1, m2, m3, m4, m5, m6 = st.columns(6)
         
@@ -84,45 +80,43 @@ if uploaded_file is not None:
 
         st.divider()
 
-        # --- SEÇÃO DE GRÁFICOS ---
-        st.subheader("📈 Análise de Performance")
+        # --- SEÇÃO DE ANÁLISE VISUAL ---
+        st.subheader("📈 Eficiência e Hierarquia")
         
-        # Criamos um "Filtro de Clique" visual usando um selectbox que age sobre a tabela
-        # Isso simula o comportamento de clicar na legenda/barra do gráfico
-        col_f1, col_f2 = st.columns([1, 1])
+        # Seletor de FOCO para a tabela (Sincronizado com o gráfico de barras)
+        foco_porte = st.selectbox("🎯 Clique para filtrar a tabela por Porte (Foco no Gráfico):", 
+                                 ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
         
-        with col_f1:
-            # Opção para o usuário focar em um porte específico direto pelo gráfico
-            foco_porte = st.selectbox("🎯 Clique para detalhar um Porte na tabela:", 
-                                     ["Ver Todos"] + portes_disponiveis)
-            
-            df_grafico = df_visualizacao.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
-            fig_porte = px.bar(
-                df_grafico, x="MESORREGIÃO", y="VENDA MAR'26", color="TAMANHO DA CIDADE",
-                title="Faturamento Médio por Região e Porte", barmode="group",
-                color_discrete_sequence=px.colors.qualitative.Prism
+        col_v1, col_v2 = st.columns(2)
+
+        with col_v1:
+            df_porte_med = df_visualizacao.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
+            fig_porte_med = px.bar(
+                df_porte_med, x="MESORREGIÃO", y="VENDA MAR'26", color="TAMANHO DA CIDADE",
+                title="Faturamento Médio: Região vs Porte", barmode="group",
+                color_discrete_sequence=px.colors.qualitative.Prism,
+                labels={"VENDA MAR'26": "Média (R$)"}
             )
-            st.plotly_chart(fig_porte, use_container_width=True)
+            st.plotly_chart(fig_porte_med, use_container_width=True)
 
         with col_v2:
-            fig_tree = px.treemap(
+            fig_tree_med = px.treemap(
                 df_visualizacao, path=["MESORREGIÃO", "TAMANHO DA CIDADE", "CIDADE"], 
                 values="VENDA MAR'26", color="DRE FEV'26", color_continuous_scale="RdYlGn",
                 title="Hierarquia de Lojas e Rentabilidade"
             )
-            st.plotly_chart(fig_tree, use_container_width=True)
+            st.plotly_chart(fig_tree_med, use_container_width=True)
 
-        # --- LÓGICA DE FILTRAGEM DA TABELA ---
+        # --- LÓGICA DE FILTRAGEM DA TABELA FINAL ---
         if foco_porte == "Ver Todos":
             df_tabela_final = df_visualizacao
         else:
             df_tabela_final = df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
 
-        st.divider()
         st.subheader(f"📋 Dados Detalhados: {foco_porte}")
         st.dataframe(df_tabela_final, use_container_width=True)
-        
     else:
         st.warning("⚠️ Nenhum dado encontrado para os filtros selecionados.")
+
 else:
-    st.info("💡 Por favor, faça o upload do arquivo na barra lateral.")
+    st.info("💡 Por favor, faça o upload do arquivo 'Teste de lojas.xlsx' na barra lateral.")
