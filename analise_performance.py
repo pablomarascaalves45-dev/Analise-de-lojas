@@ -123,56 +123,44 @@ if uploaded_file is not None:
         df_sucesso = df[(df["VENDA MAR'26"] > fat_min) & (df["DRE FEV'26"] > dre_min)].copy()
 
         if not df_sucesso.empty:
-            # Agrupamento por MESORREGIÃO e PORTE para seguir a imagem de referência
-            df_analise = df_sucesso.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"]).agg({
+            df_analise = df_sucesso.groupby(["UF", "TAMANHO DA CIDADE"]).agg({
                 "VENDA MAR'26": "mean",
                 "DRE FEV'26": "mean",
                 "LOJAS": "count"
             }).reset_index()
 
-            df_analise.columns = ["Mesorregião", "Porte da Cidade", "Faturamento Médio", "Margem DRE Média", "Qtd Lojas"]
+            df_analise.columns = ["Estado", "Porte da Cidade", "Faturamento Médio", "Margem DRE Média", "Qtd Lojas Sucesso"]
             
-            # Texto maior apenas com a quantidade de lojas
-            df_analise["label_simples"] = df_analise["Qtd Lojas"].astype(str) + " lojas"
+            # Criar coluna de texto para o gráfico: "60 lojas (0.8M)"
+            df_analise["label_grafico"] = (
+                df_analise["Qtd Lojas Sucesso"].astype(str) + " lojas (R$ " + 
+                (df_analise["Faturamento Médio"]/1_000_000).round(2).astype(str) + "M)"
+            )
 
-            # Gráfico organizado por Mesorregião (Eixo X) e Quantidade (Eixo Y)
+            # Gráfico organizado por Amostragem (Qtd Lojas)
             fig_exp = px.bar(
                 df_analise, 
-                x="Mesorregião", 
-                y="Qtd Lojas",
+                x="Estado", 
+                y="Qtd Lojas Sucesso", # Altura da barra pela amostragem
                 color="Porte da Cidade",
-                title=f"Distribuição por Mesorregião (Faturamento > {fat_min/1000:.0f}k e DRE > {dre_min*100:.1f}%)",
+                title=f"Amostragem de Lojas com Faturamento > {fat_min/1000:.0f}k e DRE > {dre_min*100:.1f}%",
                 barmode="group",
-                text="label_simples",
-                hover_data={"Faturamento Médio": ":,.2f", "Margem DRE Média": ":.2%"}, # Detalhes no hover
-                labels={"Qtd Lojas": "Quantidade de Lojas (Amostragem)"}
+                text="label_grafico", # Texto customizado na barra
+                labels={"Qtd Lojas Sucesso": "Quantidade de Lojas (Amostragem)"}
             )
-            
-            # Ajuste de layout para texto maior e legenda abaixo
-            fig_exp.update_traces(
-                textposition='outside',
-                textfont_size=14,  # Texto maior em cima da barra
-                cliponaxis=False
-            )
-            
-            fig_exp.update_layout(
-                legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5), # Legenda abaixo
-                xaxis_tickangle=-45,
-                margin=dict(b=100)
-            )
-            
+            fig_exp.update_traces(textposition='outside')
             st.plotly_chart(fig_exp, use_container_width=True)
 
-            st.subheader("Matriz de Oportunidade")
+            st.subheader("Matriz de Oportunidade por Estado")
             st.dataframe(
-                df_analise.sort_values(by=["Mesorregião", "Qtd Lojas"], ascending=[True, False]).style.format({
+                df_analise.drop(columns=["label_grafico"]).sort_values(by=["Estado", "Qtd Lojas Sucesso"], ascending=[True, False]).style.format({
                     "Faturamento Médio": "R$ {:,.2f}",
                     "Margem DRE Média": "{:.2%}"
                 }), 
                 use_container_width=True
             )
         else:
-            st.error("Não foram encontradas cidades que atendam aos critérios selecionados.")
+            st.error("Não foram encontradas cidades que atendam aos critérios selecionados nos filtros acima.")
 
 else:
     st.info("Aguardando upload do arquivo de dados para processamento.")
