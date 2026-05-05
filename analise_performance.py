@@ -33,22 +33,18 @@ def load_data(file):
 if uploaded_file is not None:
     df = load_data(uploaded_file)
 
-    # --- CRIAÇÃO DAS ABAS ---
     tab_dashboard, tab_expansao = st.tabs(["Dashboard de Performance", "Relatório de Expansão"])
 
     with tab_dashboard:
-        # --- SIDEBAR / FILTROS (Mantidos conforme solicitado) ---
         st.sidebar.header("Filtros de Localização")
         estados = sorted([x for x in df["UF"].unique() if x])
         estados_selecionados = st.sidebar.multiselect("Estado (UF):", options=estados, default=estados)
 
         df_uf = df[df["UF"].isin(estados_selecionados)]
-        
         portes_disponiveis = sorted(df_uf["TAMANHO DA CIDADE"].unique())
         portes_selecionados = st.sidebar.multiselect("Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
 
         df_filtrado_base = df_uf[df_uf["TAMANHO DA CIDADE"].isin(portes_selecionados)]
-
         cidades = sorted([x for x in df_filtrado_base["CIDADE"].unique() if x])
         cidades_selecionadas = st.sidebar.multiselect("Cidade:", options=cidades, default=cidades)
 
@@ -62,7 +58,6 @@ if uploaded_file is not None:
         ]
 
         if not df_visualizacao.empty:
-            # --- KPIs PRINCIPAIS ---
             m1, m2, m3, m4, m5, m6 = st.columns(6)
             
             venda_total = df_visualizacao["VENDA MAR'26"].sum()
@@ -80,7 +75,6 @@ if uploaded_file is not None:
             m6.metric("Média População (1km)", f"{int(media_populacao):,}")
 
             st.divider()
-
             st.subheader("Eficiência e Hierarquia")
             foco_porte = st.selectbox("Filtrar detalhamento por Porte:", 
                                      ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
@@ -117,18 +111,18 @@ if uploaded_file is not None:
 
     with tab_expansao:
         st.header("Análise Estratégica para Expansão")
-        st.markdown("""
-        Este relatório identifica os melhores portes de cidade para expansão baseando-se em dois critérios de sucesso:
-        1. **Faturamento Médio** > R$ 500.000
-        2. **DRE** Positivo (Rentabilidade acima de 0%)
-        """)
+        
+        # --- CONTROLES DE PARÂMETROS ---
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            fat_min = st.slider("Faturamento Mínimo Desejado (R$):", 0, 1500000, 500000, step=50000)
+        with col_c2:
+            dre_min = st.slider("Rentabilidade DRE Mínima (%):", -20.0, 40.0, 0.0, step=0.5) / 100
 
-        # Filtro de Sucesso: Faturamento > 500k e DRE > 0
-        df_sucesso = df[(df["VENDA MAR'26"] > 500000) & (df["DRE FEV'26"] > 0)].copy()
+        # Filtro dinâmico baseado nos sliders
+        df_sucesso = df[(df["VENDA MAR'26"] > fat_min) & (df["DRE FEV'26"] > dre_min)].copy()
 
         if not df_sucesso.empty:
-            # Agrupamento para encontrar o melhor porte por Estado
-            # Calculamos a média de faturamento e a rentabilidade média para validar
             df_analise = df_sucesso.groupby(["UF", "TAMANHO DA CIDADE"]).agg({
                 "VENDA MAR'26": "mean",
                 "DRE FEV'26": "mean",
@@ -136,35 +130,37 @@ if uploaded_file is not None:
             }).reset_index()
 
             df_analise.columns = ["Estado", "Porte da Cidade", "Faturamento Médio", "Margem DRE Média", "Qtd Lojas Sucesso"]
+            
+            # Criar coluna de texto para o gráfico: "60 lojas (0.8M)"
+            df_analise["label_grafico"] = (
+                df_analise["Qtd Lojas Sucesso"].astype(str) + " lojas (R$ " + 
+                (df_analise["Faturamento Médio"]/1_000_000).round(2).astype(str) + "M)"
+            )
 
-            # Ordenar para mostrar os melhores resultados primeiro
-            df_analise = df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False])
-
-            # Gráfico de Recomendação
+            # Gráfico organizado por Amostragem (Qtd Lojas)
             fig_exp = px.bar(
                 df_analise, 
                 x="Estado", 
-                y="Faturamento Médio", 
+                y="Qtd Lojas Sucesso", # Altura da barra pela amostragem
                 color="Porte da Cidade",
-                title="Portes de Cidade com Faturamento > 500k e DRE Positivo por Estado",
+                title=f"Amostragem de Lojas com Faturamento > {fat_min/1000:.0f}k e DRE > {dre_min*100:.1f}%",
                 barmode="group",
-                text_auto='.2s',
-                labels={"Faturamento Médio": "Faturamento Médio (R$)"}
+                text="label_grafico", # Texto customizado na barra
+                labels={"Qtd Lojas Sucesso": "Quantidade de Lojas (Amostragem)"}
             )
+            fig_exp.update_traces(textposition='outside')
             st.plotly_chart(fig_exp, use_container_width=True)
 
             st.subheader("Matriz de Oportunidade por Estado")
             st.dataframe(
-                df_analise.style.format({
+                df_analise.drop(columns=["label_grafico"]).sort_values(by=["Estado", "Qtd Lojas Sucesso"], ascending=[True, False]).style.format({
                     "Faturamento Médio": "R$ {:,.2f}",
                     "Margem DRE Média": "{:.2%}"
                 }), 
                 use_container_width=True
             )
-            
-            st.info("💡 Dica: Os portes listados acima representam onde o modelo de negócio já opera com lucro e alto faturamento.")
         else:
-            st.error("Não foram encontradas cidades que atendam simultaneamente aos critérios de Faturamento > 500k e DRE Positivo.")
+            st.error("Não foram encontradas cidades que atendam aos critérios selecionados nos filtros acima.")
 
 else:
     st.info("Aguardando upload do arquivo de dados para processamento.")
