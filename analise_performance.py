@@ -2,12 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(page_title="Laboratório de Lojas", layout="wide")
+st.set_page_config(page_title="Dashboard de Performance", layout="wide")
 
-st.title("📊 Laboratório de Performance de Lojas")
+st.title("Laboratório de Performance de Lojas")
 
 # --- COMPONENTE DE UPLOAD ---
-uploaded_file = st.sidebar.file_uploader("Suba sua planilha 'Teste de lojas.xlsx' aqui", type=["xlsx"])
+uploaded_file = st.sidebar.file_uploader("Upload do arquivo 'Teste de lojas.xlsx'", type=["xlsx"])
 
 def load_data(file):
     df = pd.read_excel(file)
@@ -36,22 +36,22 @@ if uploaded_file is not None:
     # --- SIDEBAR / FILTROS ---
     st.sidebar.header("Filtros de Localização")
     estados = sorted([x for x in df["UF"].unique() if x])
-    estados_selecionados = st.sidebar.multiselect("Selecione o Estado (UF):", options=estados, default=estados)
+    estados_selecionados = st.sidebar.multiselect("Estado (UF):", options=estados, default=estados)
 
     df_uf = df[df["UF"].isin(estados_selecionados)]
     
     portes_disponiveis = sorted(df_uf["TAMANHO DA CIDADE"].unique())
-    portes_selecionados = st.sidebar.multiselect("Filtrar por Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
+    portes_selecionados = st.sidebar.multiselect("Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
 
     # Base filtrada pela sidebar
     df_filtrado_base = df_uf[df_uf["TAMANHO DA CIDADE"].isin(portes_selecionados)]
 
     cidades = sorted([x for x in df_filtrado_base["CIDADE"].unique() if x])
-    cidades_selecionadas = st.sidebar.multiselect("Selecione a Cidade:", options=cidades, default=cidades)
+    cidades_selecionadas = st.sidebar.multiselect("Cidade:", options=cidades, default=cidades)
 
     mesos_list = [x for x in df_filtrado_base["MESORREGIÃO"].unique() if x and x != 'Não Informado']
     mesos = sorted(mesos_list)
-    mesos_selecionados = st.sidebar.multiselect("Selecione a Mesorregião:", options=mesos, default=mesos)
+    mesos_selecionados = st.sidebar.multiselect("Mesorregião:", options=mesos, default=mesos)
 
     # DataFrame principal para os gráficos
     df_visualizacao = df_filtrado_base[
@@ -59,7 +59,6 @@ if uploaded_file is not None:
         (df_filtrado_base["MESORREGIÃO"].isin(mesos_selecionados))
     ]
 
-    # CORREÇÃO: Usando a variável correta (df_visualizacao)
     if not df_visualizacao.empty:
         # --- KPIs PRINCIPAIS ---
         m1, m2, m3, m4, m5, m6 = st.columns(6)
@@ -81,10 +80,9 @@ if uploaded_file is not None:
         st.divider()
 
         # --- SEÇÃO DE ANÁLISE VISUAL ---
-        st.subheader("📈 Eficiência e Hierarquia")
+        st.subheader("Eficiência e Hierarquia")
         
-        # Seletor de FOCO para a tabela (Sincronizado com o gráfico de barras)
-        foco_porte = st.selectbox("🎯 Clique para filtrar a tabela por Porte (Foco no Gráfico):", 
+        foco_porte = st.selectbox("Filtrar detalhamento por Porte:", 
                                  ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
         
         col_v1, col_v2 = st.columns(2)
@@ -113,10 +111,10 @@ if uploaded_file is not None:
         else:
             df_tabela_final = df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
 
-        st.subheader(f"📋 Dados Detalhados: {foco_porte}")
+        st.subheader(f"Dados Detalhados: {foco_porte}")
         st.dataframe(df_tabela_final, use_container_width=True)
     else:
-        st.warning("⚠️ Nenhum dado encontrado para os filtros selecionados.")
+        st.warning("Nenhum dado encontrado para os parâmetros selecionados.")
 
 else:
-    st.info("💡 Por favor, faça o upload do arquivo 'Teste de lojas.xlsx' na barra lateral.")
+    st.info("Aguardando upload do arquivo de dados para processamento.")
