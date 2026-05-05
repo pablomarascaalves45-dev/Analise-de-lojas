@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# Configuração da página
 st.set_page_config(page_title="Dashboard de Performance", layout="wide")
 
 st.title("Laboratório de Performance de Lojas")
@@ -11,9 +12,10 @@ uploaded_file = st.sidebar.file_uploader("Upload do arquivo 'Teste de lojas.xlsx
 
 def load_data(file):
     df = pd.read_excel(file)
+    # Limpa espaços em branco nos nomes das colunas
     df.columns = [c.strip() for c in df.columns]
     
-    # Tratamento de valores monetários
+    # Tratamento de valores monetários (Ticket Médio)
     if "TICKET FSJ MAR'26" in df.columns:
         df["TICKET FSJ MAR'26"] = (
             df["TICKET FSJ MAR'26"]
@@ -26,17 +28,21 @@ def load_data(file):
         df["TICKET FSJ MAR'26"] = pd.to_numeric(df["TICKET FSJ MAR'26"], errors='coerce').fillna(0)
     
     # Preenchimento de nulos em colunas categóricas
-    for col in ["UF", "CIDADE", "MESORREGIÃO", "LOJAS", "TAMANHO DA CIDADE"]:
+    colunas_texto = ["UF", "CIDADE", "MESORREGIÃO", "LOJAS", "TAMANHO DA CIDADE"]
+    for col in colunas_texto:
         if col in df.columns:
             df[col] = df[col].astype(str).replace('nan', 'Não Informado')
             
     return df
 
+# Só executa o restante se o arquivo for carregado
 if uploaded_file is not None:
     df = load_data(uploaded_file)
 
+    # Criação das Abas
     tab_dashboard, tab_expansao = st.tabs(["Dashboard de Performance", "Relatório de Expansão"])
 
+    # --- ABA 1: DASHBOARD ---
     with tab_dashboard:
         st.sidebar.header("Filtros de Localização")
         estados = sorted([x for x in df["UF"].unique() if x])
@@ -60,6 +66,7 @@ if uploaded_file is not None:
         ]
 
         if not df_visualizacao.empty:
+            # Métricas Principais
             m1, m2, m3, m4, m5, m6 = st.columns(6)
             
             venda_total = df_visualizacao["VENDA MAR'26"].sum()
@@ -111,6 +118,7 @@ if uploaded_file is not None:
         else:
             st.warning("Nenhum dado encontrado para os filtros selecionados.")
 
+    # --- ABA 2: EXPANSÃO (COM SEUS AJUSTES) ---
     with tab_expansao:
         st.header("Análise Estratégica para Expansão")
         
@@ -121,11 +129,11 @@ if uploaded_file is not None:
         with col_c2:
             dre_min = st.slider("Rentabilidade DRE Mínima (%):", -20.0, 40.0, 0.0, step=0.5) / 100
 
-        # Filtro dinâmico baseado nos sliders
+        # Filtro de sucesso baseado nos sliders
         df_sucesso = df[(df["VENDA MAR'26"] > fat_min) & (df["DRE FEV'26"] > dre_min)].copy()
 
         if not df_sucesso.empty:
-            # Agrupamento para o gráfico lateral
+            # Agrupamento para o gráfico
             df_analise = df_sucesso.groupby(["UF", "TAMANHO DA CIDADE"]).agg({
                 "VENDA MAR'26": "mean",
                 "DRE FEV'26": "mean",
@@ -134,10 +142,10 @@ if uploaded_file is not None:
 
             df_analise.columns = ["Estado", "Porte da Cidade", "Faturamento Médio", "Margem DRE Média", "Qtd Lojas"]
             
-            # Rótulo para o topo das barras
+            # Texto para o topo das barras
             df_analise["label_topo"] = df_analise["Qtd Lojas"].astype(str) + " Lojas"
 
-            # Gráfico com Faturamento no Eixo Y
+            # Gráfico de barras
             fig_exp = px.bar(
                 df_analise, 
                 x="Estado", 
@@ -146,10 +154,10 @@ if uploaded_file is not None:
                 title="Performance Média por Estado (Amostragem no Topo)",
                 barmode="group",
                 text="label_topo",
-                labels={"Faturamento Médio": "Faturamento Médio (R$)"}
+                # Ajuste: Removendo nomes dos eixos conforme solicitado
+                labels={"Faturamento Médio": "Faturamento Médio (R$)", "Estado": "", "Porte da Cidade": ""}
             )
             
-            # Formatação visual
             fig_exp.update_traces(
                 textposition='outside',
                 textfont=dict(size=14, color="black"),
@@ -157,14 +165,29 @@ if uploaded_file is not None:
             )
             
             fig_exp.update_layout(
+                xaxis_title=None, 
                 yaxis_tickprefix="R$ ", 
                 yaxis_tickformat=",.",
-                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
+                legend=dict(title=None, orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
             )
             
             st.plotly_chart(fig_exp, use_container_width=True)
 
-            st.subheader("Matriz de Oportunidade")
+            # --- LÓGICA DE RECOMENDAÇÃO (ENTRE GRÁFICO E MATRIZ) ---
+            df_recomendacao = df_sucesso.groupby("TAMANHO DA CIDADE").agg({
+                "VENDA MAR'26": "mean",
+                "DRE FEV'26": "mean"
+            }).reset_index()
+            
+            # Identifica o porte com maior média de faturamento que passou nos filtros
+            melhor_porte_row = df_recomendacao.sort_values(by="VENDA MAR'26", ascending=False).iloc[0]
+            melhor_nome = melhor_porte_row["TAMANHO DA CIDADE"]
+            melhor_fat = melhor_porte_row["VENDA MAR'26"]
+
+            st.success(f"💡 **Melhor Oportunidade de Expansão:** O porte de cidade **{melhor_nome}** é o mais promissor, com um faturamento médio de **R$ {melhor_fat:,.2f}** entre as unidades de sucesso.")
+
+            # Matriz de Oportunidade
+            st.subheader("Matriz de Oportunidade Detalhada")
             st.dataframe(
                 df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False]).style.format({
                     "Faturamento Médio": "R$ {:,.2f}",
@@ -173,7 +196,7 @@ if uploaded_file is not None:
                 use_container_width=True
             )
         else:
-            st.error("Não foram encontradas cidades com os filtros de Faturamento e DRE selecionados.")
+            st.error("Nenhum dado atende aos critérios de faturamento e DRE selecionados.")
 
 else:
-    st.info("Aguardando upload do arquivo de dados para processamento.")
+    st.info("Por favor, faça o upload do arquivo Excel na barra lateral para começar.")
