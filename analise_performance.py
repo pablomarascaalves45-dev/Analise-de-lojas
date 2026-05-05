@@ -1,115 +1,4 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-
-st.set_page_config(page_title="Dashboard de Performance", layout="wide")
-
-st.title("Laboratório de Performance de Lojas")
-
-# --- COMPONENTE DE UPLOAD ---
-uploaded_file = st.sidebar.file_uploader("Upload do arquivo 'Teste de lojas.xlsx'", type=["xlsx"])
-
-def load_data(file):
-    df = pd.read_excel(file)
-    df.columns = [c.strip() for c in df.columns]
-    
-    if "TICKET FSJ MAR'26" in df.columns:
-        df["TICKET FSJ MAR'26"] = (
-            df["TICKET FSJ MAR'26"]
-            .astype(str)
-            .str.replace('R\$ ', '', regex=True)
-            .str.replace('.', '', regex=False)
-            .str.replace(',', '.', regex=False)
-            .str.strip()
-        )
-        df["TICKET FSJ MAR'26"] = pd.to_numeric(df["TICKET FSJ MAR'26"], errors='coerce').fillna(0)
-    
-    for col in ["UF", "CIDADE", "MESORREGIÃO", "LOJAS", "TAMANHO DA CIDADE"]:
-        if col in df.columns:
-            df[col] = df[col].astype(str).replace('nan', 'Não Informado')
-            
-    return df
-
-if uploaded_file is not None:
-    df = load_data(uploaded_file)
-
-    tab_dashboard, tab_expansao = st.tabs(["Dashboard de Performance", "Relatório de Expansão"])
-
-    with tab_dashboard:
-        st.sidebar.header("Filtros de Localização")
-        estados = sorted([x for x in df["UF"].unique() if x])
-        estados_selecionados = st.sidebar.multiselect("Estado (UF):", options=estados, default=estados)
-
-        df_uf = df[df["UF"].isin(estados_selecionados)]
-        portes_disponiveis = sorted(df_uf["TAMANHO DA CIDADE"].unique())
-        portes_selecionados = st.sidebar.multiselect("Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
-
-        df_filtrado_base = df_uf[df_uf["TAMANHO DA CIDADE"].isin(portes_selecionados)]
-        cidades = sorted([x for x in df_filtrado_base["CIDADE"].unique() if x])
-        cidades_selecionadas = st.sidebar.multiselect("Cidade:", options=cidades, default=cidades)
-
-        mesos_list = [x for x in df_filtrado_base["MESORREGIÃO"].unique() if x and x != 'Não Informado']
-        mesos = sorted(mesos_list)
-        mesos_selecionados = st.sidebar.multiselect("Mesorregião:", options=mesos, default=mesos)
-
-        df_visualizacao = df_filtrado_base[
-            (df_filtrado_base["CIDADE"].isin(cidades_selecionadas)) & 
-            (df_filtrado_base["MESORREGIÃO"].isin(mesos_selecionados))
-        ]
-
-        if not df_visualizacao.empty:
-            m1, m2, m3, m4, m5, m6 = st.columns(6)
-            
-            venda_total = df_visualizacao["VENDA MAR'26"].sum()
-            qtd_lojas = df_visualizacao["LOJAS"].nunique()
-            media_dre = df_visualizacao["DRE FEV'26"].mean() * 100 
-            ticket_medio = df_visualizacao["TICKET FSJ MAR'26"].mean()
-            media_faturamento = df_visualizacao["MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"].mean()
-            media_populacao = df_visualizacao["POPULAÇÃO RAIO DE 1KM"].mean()
-
-            m1.metric("Qtd de Lojas", f"{qtd_lojas}")
-            m2.metric("Venda Total", f"R$ {venda_total/1_000_000:.1f}M")
-            m3.metric("Média DRE", f"{media_dre:.2f}%")
-            m4.metric("Ticket Médio", f"R$ {ticket_medio:.2f}")
-            m5.metric("Média Fat. Anual", f"R$ {media_faturamento:,.0f}")
-            m6.metric("Média População (1km)", f"{int(media_populacao):,}")
-
-            st.divider()
-            st.subheader("Eficiência e Hierarquia")
-            foco_porte = st.selectbox("Filtrar detalhamento por Porte:", 
-                                     ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
-            
-            col_v1, col_v2 = st.columns(2)
-
-            with col_v1:
-                df_porte_med = df_visualizacao.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
-                fig_porte_med = px.bar(
-                    df_porte_med, x="MESORREGIÃO", y="VENDA MAR'26", color="TAMANHO DA CIDADE",
-                    title="Faturamento Médio: Região vs Porte", barmode="group",
-                    color_discrete_sequence=px.colors.qualitative.Prism,
-                    labels={"VENDA MAR'26": "Média (R$)"}
-                )
-                st.plotly_chart(fig_porte_med, use_container_width=True)
-
-            with col_v2:
-                fig_tree_med = px.treemap(
-                    df_visualizacao, path=["MESORREGIÃO", "TAMANHO DA CIDADE", "CIDADE"], 
-                    values="VENDA MAR'26", color="DRE FEV'26", color_continuous_scale="RdYlGn",
-                    title="Hierarquia de Lojas e Rentabilidade"
-                )
-                st.plotly_chart(fig_tree_med, use_container_width=True)
-
-            if foco_porte == "Ver Todos":
-                df_tabela_final = df_visualizacao
-            else:
-                df_tabela_final = df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
-
-            st.subheader(f"Dados Detalhados: {foco_porte}")
-            st.dataframe(df_tabela_final, use_container_width=True)
-        else:
-            st.warning("Nenhum dado encontrado para os parâmetros selecionados.")
-
-    with tab_expansao:
+with tab_expansao:
         st.header("Análise Estratégica para Expansão")
         
         # --- CONTROLES DE PARÂMETROS ---
@@ -131,36 +20,39 @@ if uploaded_file is not None:
 
             df_analise.columns = ["Estado", "Porte da Cidade", "Faturamento Médio", "Margem DRE Média", "Qtd Lojas Sucesso"]
             
-            # Criar coluna de texto para o gráfico: "60 lojas (0.8M)"
-            df_analise["label_grafico"] = (
-                df_analise["Qtd Lojas Sucesso"].astype(str) + " lojas (R$ " + 
-                (df_analise["Faturamento Médio"]/1_000_000).round(2).astype(str) + "M)"
-            )
+            # Rótulo customizado: Apenas a Qtd de Lojas em destaque
+            df_analise["label_topo"] = df_analise["Qtd Lojas Sucesso"].astype(str) + " Lojas"
 
-            # Gráfico organizado por Amostragem (Qtd Lojas)
+            # Gráfico com Eixo Y sendo Faturamento
             fig_exp = px.bar(
                 df_analise, 
                 x="Estado", 
-                y="Qtd Lojas Sucesso", # Altura da barra pela amostragem
+                y="Faturamento Médio", # Alterado para faturamento no eixo lateral
                 color="Porte da Cidade",
-                title=f"Amostragem de Lojas com Faturamento > {fat_min/1000:.0f}k e DRE > {dre_min*100:.1f}%",
+                title=f"Performance por Estado (Faturamento Médio)",
                 barmode="group",
-                text="label_grafico", # Texto customizado na barra
-                labels={"Qtd Lojas Sucesso": "Quantidade de Lojas (Amostragem)"}
+                text="label_topo", # Texto de amostragem no topo
+                labels={"Faturamento Médio": "Faturamento Médio (R$)"}
             )
-            fig_exp.update_traces(textposition='outside')
+            
+            # Ajuste estético dos rótulos (texto maior e posição)
+            fig_exp.update_traces(
+                textposition='outside',
+                textfont=dict(size=14, color="black") # Texto maior como solicitado
+            )
+            
+            # Formatação do eixo Y para Moeda
+            fig_exp.update_layout(yaxis_tickprefix="R$ ", yaxis_tickformat=",.")
+            
             st.plotly_chart(fig_exp, use_container_width=True)
 
             st.subheader("Matriz de Oportunidade por Estado")
             st.dataframe(
-                df_analise.drop(columns=["label_grafico"]).sort_values(by=["Estado", "Qtd Lojas Sucesso"], ascending=[True, False]).style.format({
+                df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False]).style.format({
                     "Faturamento Médio": "R$ {:,.2f}",
                     "Margem DRE Média": "{:.2%}"
                 }), 
                 use_container_width=True
             )
         else:
-            st.error("Não foram encontradas cidades que atendam aos critérios selecionados nos filtros acima.")
-
-else:
-    st.info("Aguardando upload do arquivo de dados para processamento.")
+            st.error("Não foram encontradas cidades que atendam aos critérios selecionados.")
