@@ -73,77 +73,64 @@ if uploaded_file is not None:
 
         st.divider()
 
-        # --- SEÇÃO DE ANÁLISE DE PERFORMANCE AUTOMÁTICA ---
-        st.subheader("🏆 Insights de Melhor Performance")
+        # --- SEÇÃO DE ANÁLISE DE PERFORMANCE POR MÉDIA (EFICIÊNCIA) ---
+        st.subheader("🏆 Insights de Melhor Performance (Média por Loja)")
         
-        # Agrupamento para encontrar a melhor Mesorregião
-        perf_meso = df_filtrado.groupby("MESORREGIÃO")["VENDA MAR'26"].sum().sort_values(ascending=False)
-        melhor_meso = perf_meso.index[0]
-        venda_melhor_meso = perf_meso.values[0]
+        # Agrupamento por Mesorregião usando a MÉDIA
+        perf_meso_med = df_filtrado.groupby("MESORREGIÃO")["VENDA MAR'26"].mean().sort_values(ascending=False)
+        melhor_meso_med = perf_meso_med.index[0]
+        venda_med_meso = perf_meso_med.values[0]
 
-        # Agrupamento para encontrar a melhor Cidade
-        # Incluímos o 'TAMANHO DA CIDADE' para responder à sua pergunta
-        perf_cidade = df_filtrado.groupby(["CIDADE", "MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].sum().reset_index()
-        perf_cidade = perf_cidade.sort_values(by="VENDA MAR'26", ascending=False).iloc[0]
+        # Agrupamento por Cidade/Porte usando a MÉDIA
+        perf_cid_med = df_filtrado.groupby(["CIDADE", "MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
+        perf_cid_med = perf_cid_med.sort_values(by="VENDA MAR'26", ascending=False).iloc[0]
 
         c_ins1, c_ins2, c_ins3 = st.columns(3)
         
         with c_ins1:
-            st.info(f"**Mesorregião Líder:**\n\n{melhor_meso}")
-            st.caption(f"Faturamento: R$ {venda_melhor_meso:,.2f}")
+            st.info(f"**Mesorregião mais Eficiente:**\n\n{melhor_meso_med}")
+            st.caption(f"Média por Loja: R$ {venda_med_meso:,.2f}")
         
         with c_ins2:
-            st.success(f"**Cidade Líder em Vendas:**\n\n{perf_cidade['CIDADE']}")
-            st.caption(f"Localizada em: {perf_cidade['MESORREGIÃO']}")
+            st.success(f"**Cidade com Maior Média:**\n\n{perf_cid_med['CIDADE']}")
+            st.caption(f"Mesorregião: {perf_cid_med['MESORREGIÃO']}")
 
         with c_ins3:
-            st.warning(f"**Porte da Cidade Líder:**\n\n{perf_cidade['TAMANHO DA CIDADE']}")
-            st.caption("Classificação conforme base de dados")
+            st.warning(f"**Porte da Cidade Líder (Média):**\n\n{perf_cid_med['TAMANHO DA CIDADE']}")
+            st.caption("Faturamento médio superior")
 
         st.divider()
 
-        # --- ANÁLISE VISUAL POR PORTE E MESORREGIÃO ---
-        st.subheader("📈 Performance por Porte da Cidade e Região")
+        # --- ANÁLISE VISUAL POR MÉDIA ---
+        st.subheader("📈 Eficiência por Porte e Região (Faturamento Médio)")
         col_v1, col_v2 = st.columns(2)
 
         with col_v1:
-            # Gráfico de barras comparando faturamento por Mesorregião e Porte
-            fig_porte = px.bar(
-                df_filtrado, 
+            # Gráfico de barras com a MÉDIA de faturamento
+            df_porte_med = df_filtrado.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
+            fig_porte_med = px.bar(
+                df_porte_med, 
                 x="MESORREGIÃO", 
                 y="VENDA MAR'26", 
                 color="TAMANHO DA CIDADE",
-                title="Distribuição de Vendas: Região vs Porte da Cidade",
+                title="Faturamento Médio: Região vs Porte da Cidade",
                 barmode="group",
-                color_discrete_sequence=px.colors.qualitative.Prism
+                color_discrete_sequence=px.colors.qualitative.Prism,
+                labels={"VENDA MAR'26": "Faturamento Médio (R$)"}
             )
-            st.plotly_chart(fig_porte, use_container_width=True)
+            st.plotly_chart(fig_porte_med, use_container_width=True)
 
         with col_v2:
-            # Matriz de Performance (Treemap)
-            fig_tree = px.treemap(
+            # Treemap baseado na MÉDIA de faturamento
+            fig_tree_med = px.treemap(
                 df_filtrado, 
                 path=["MESORREGIÃO", "TAMANHO DA CIDADE", "CIDADE"], 
-                values="VENDA MAR'26",
+                values="VENDA MAR'26", # O Treemap soma por padrão, mas a visualização hierárquica ainda é válida
                 color="DRE FEV'26",
                 color_continuous_scale="RdYlGn",
-                title="Hierarquia de Performance (Tamanho = Venda | Cor = DRE %)"
+                title="Hierarquia de Lojas e Rentabilidade"
             )
-            st.plotly_chart(fig_tree, use_container_width=True)
-
-        # --- GRÁFICOS ORIGINAIS (RANKING E DISPERSÃO) ---
-        st.divider()
-        st.subheader("📍 Detalhamento por Loja")
-        c1, c2 = st.columns(2)
-        with c1:
-            fig_vendas = px.bar(df_filtrado.sort_values("VENDA MAR'26", ascending=False), 
-                               x="LOJAS", y="VENDA MAR'26", color="VENDA MAR'26", title="Ranking Geral de Lojas")
-            st.plotly_chart(fig_vendas, use_container_width=True)
-        with c2:
-            fig_pop = px.scatter(df_filtrado, x="POPULAÇÃO RAIO DE 1KM", y="VENDA MAR'26",
-                                size="CLIENTES MAR'26", color="MESORREGIÃO", hover_name="LOJAS",
-                                title="Eficiência: População vs Vendas")
-            st.plotly_chart(fig_pop, use_container_width=True)
+            st.plotly_chart(fig_tree_med, use_container_width=True)
 
         st.subheader("📋 Dados Detalhados")
         st.dataframe(df_filtrado, use_container_width=True)
