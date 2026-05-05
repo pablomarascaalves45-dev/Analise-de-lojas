@@ -23,10 +23,9 @@ def load_data(file):
             .str.replace(',', '.', regex=False)
             .str.strip()
         )
-        # Converte para float e preenche erro com 0
         df["TICKET FSJ MAR'26"] = pd.to_numeric(df["TICKET FSJ MAR'26"], errors='coerce').fillna(0)
     
-    # Garante que colunas de localização sejam strings e sem nulos para não quebrar o sorted
+    # Garante que colunas de localização sejam strings
     for col in ["UF", "CIDADE", "MESORREGIÃO", "LOJAS"]:
         if col in df.columns:
             df[col] = df[col].astype(str).replace('nan', 'Não Informado')
@@ -39,19 +38,14 @@ if uploaded_file is not None:
     # --- SIDEBAR / FILTROS ---
     st.sidebar.header("Filtros de Localização")
 
-    # 1. Filtro de UF
     estados = sorted([x for x in df["UF"].unique() if x])
     estados_selecionados = st.sidebar.multiselect("Selecione o Estado (UF):", options=estados, default=estados)
 
-    # Filtragem intermediária por UF
     df_uf = df[df["UF"].isin(estados_selecionados)]
     
-    # 2. Filtro de Cidade (Garante que não há erro se df_uf estiver vazio)
     cidades = sorted([x for x in df_uf["CIDADE"].unique() if x])
     cidades_selecionadas = st.sidebar.multiselect("Selecione a Cidade:", options=cidades, default=cidades)
 
-    # 3. Filtro de Mesorregião (CORREÇÃO DO ERRO DO SORTED)
-    # Filtramos apenas valores válidos e transformamos em lista para o sorted
     mesos_list = [x for x in df_uf["MESORREGIÃO"].unique() if x and x != 'Não Informado']
     mesos = sorted(mesos_list)
     mesos_selecionados = st.sidebar.multiselect("Selecione a Mesorregião:", options=mesos, default=mesos)
@@ -62,20 +56,25 @@ if uploaded_file is not None:
         (df_uf["MESORREGIÃO"].isin(mesos_selecionados))
     ]
 
-    # Verifica se o filtro retornou algo para não dar erro nos cálculos
     if not df_filtrado.empty:
         # --- KPIs PRINCIPAIS ---
-        col1, col2, col3, col4 = st.columns(4)
+        # Aumentei para 6 colunas para caber os novos indicadores
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
         
         venda_total = df_filtrado["VENDA MAR'26"].sum()
+        qtd_lojas = df_filtrado["LOJAS"].nunique()
+        # Média de DRE (Multiplicado por 100 para exibir % se estiver em decimal)
+        media_dre = df_filtrado["DRE FEV'26"].mean() * 100 
+        ticket_medio = df_filtrado["TICKET FSJ MAR'26"].mean()
         media_faturamento = df_filtrado["MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"].mean()
         populacao_total = df_filtrado["POPULAÇÃO RAIO DE 1KM"].sum()
-        ticket_medio = df_filtrado["TICKET FSJ MAR'26"].mean()
 
-        col1.metric("Venda Total (Mar/26)", f"R$ {venda_total:,.2f}")
-        col2.metric("Média Fat. Anual", f"R$ {media_faturamento:,.2f}")
-        col3.metric("Ticket Médio (FSJ)", f"R$ {ticket_medio:.2f}")
-        col4.metric("População (Raio 1km)", f"{int(populacao_total):,}")
+        m1.metric("Qtd de Lojas", f"{qtd_lojas}")
+        m2.metric("Venda Total (Mar/26)", f"R$ {venda_total/1_000_000:.1f}M")
+        m3.metric("Média DRE", f"{media_dre:.2f}%")
+        m4.metric("Ticket Médio", f"R$ {ticket_medio:.2f}")
+        m5.metric("Média Fat. Anual", f"R$ {media_faturamento:,.0f}")
+        m6.metric("População Total", f"{int(populacao_total):,}")
 
         st.divider()
 
@@ -84,18 +83,21 @@ if uploaded_file is not None:
         
         df_meso = df_filtrado.groupby("MESORREGIÃO").agg({
             "VENDA MAR'26": "sum",
-            "LOJAS": "count"
+            "LOJAS": "count",
+            "DRE FEV'26": "mean"
         }).reset_index()
-        df_meso.columns = ["Mesorregião", "Total Vendas", "Qtd Lojas"]
+        df_meso["DRE %"] = df_meso["DRE FEV'26"] * 100
 
         col_m1, col_m2 = st.columns([2, 1])
         with col_m1:
-            fig_meso = px.bar(df_meso, x="Mesorregião", y="Total Vendas", color="Total Vendas", 
-                             text_auto='.2s', title="Vendas por Mesorregião", color_continuous_scale="Viridis")
+            # Gráfico de Vendas por Meso
+            fig_meso = px.bar(df_meso, x="MESORREGIÃO", y="VENDA MAR'26", color="DRE %", 
+                             text_auto='.2s', title="Vendas por Mesorregião (Cor = Média DRE %)", 
+                             color_continuous_scale="RdYlGn")
             st.plotly_chart(fig_meso, use_container_width=True)
         with col_m2:
-            fig_pie_meso = px.pie(df_meso, values="Total Vendas", names="Mesorregião", 
-                                 title="% Participação", hole=0.4)
+            fig_pie_meso = px.pie(df_meso, values="VENDA MAR'26", names="MESORREGIÃO", 
+                                 title="% Participação nas Vendas", hole=0.4)
             st.plotly_chart(fig_pie_meso, use_container_width=True)
 
         # --- DETALHAMENTO ---
@@ -104,12 +106,13 @@ if uploaded_file is not None:
         c1, c2 = st.columns(2)
         with c1:
             fig_vendas = px.bar(df_filtrado.sort_values("VENDA MAR'26", ascending=False), 
-                               x="LOJAS", y="VENDA MAR'26", color="VENDA MAR'26", title="Ranking de Vendas")
+                               x="LOJAS", y="VENDA MAR'26", color="DRE FEV'26", 
+                               title="Ranking de Vendas (Cor = Lucratividade DRE)")
             st.plotly_chart(fig_vendas, use_container_width=True)
         with c2:
             fig_pop = px.scatter(df_filtrado, x="POPULAÇÃO RAIO DE 1KM", y="VENDA MAR'26",
                                 size="CLIENTES MAR'26", color="MESORREGIÃO", hover_name="LOJAS",
-                                title="População vs Vendas")
+                                title="Eficiência: População vs Vendas")
             st.plotly_chart(fig_pop, use_container_width=True)
 
         st.subheader("📋 Dados Selecionados")
