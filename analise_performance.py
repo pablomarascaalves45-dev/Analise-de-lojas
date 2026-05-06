@@ -15,7 +15,14 @@ def load_data(file):
     # Limpa espaços em branco nos nomes das colunas
     df.columns = [c.strip() for c in df.columns]
     
-    # Tratamento de valores monetários (Ticket Médio)
+    # --- CORREÇÃO DO ERRO DE SOMA ---
+    # Converte colunas financeiras para numérico, transformando erros (como "-") em 0
+    colunas_financeiras = ["VENDA MAR'26", "DRE FEV'26", "DRE_AC FEV'26", "MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"]
+    for col in colunas_financeiras:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    # Tratamento específico para o Ticket Médio (que vem com R$ e formatação brasileira)
     if "TICKET FSJ MAR'26" in df.columns:
         df["TICKET FSJ MAR'26"] = (
             df["TICKET FSJ MAR'26"]
@@ -35,17 +42,14 @@ def load_data(file):
             
     return df
 
-# Só executa o restante se o arquivo for carregado
 if uploaded_file is not None:
     df = load_data(uploaded_file)
 
-    # Criação das Abas
     tab_dashboard, tab_expansao = st.tabs(["Dashboard de Performance", "Relatório de Expansão"])
 
-    # --- ABA 1: DASHBOARD ---
     with tab_dashboard:
         st.sidebar.header("Filtros de Localização")
-        estados_lista = sorted([x for x in df["UF"].unique() if x])
+        estados_lista = sorted([x for x in df["UF"].unique() if x != 'Não Informado'])
         estados_selecionados = st.sidebar.multiselect("Estado (UF):", options=estados_lista, default=estados_lista)
 
         df_uf = df[df["UF"].isin(estados_selecionados)]
@@ -53,7 +57,7 @@ if uploaded_file is not None:
         portes_selecionados = st.sidebar.multiselect("Porte da Cidade:", options=portes_disponiveis, default=portes_disponiveis)
 
         df_filtrado_base = df_uf[df_uf["TAMANHO DA CIDADE"].isin(portes_selecionados)]
-        cidades = sorted([x for x in df_filtrado_base["CIDADE"].unique() if x])
+        cidades = sorted([x for x in df_filtrado_base["CIDADE"].unique() if x != 'Não Informado'])
         cidades_selecionadas = st.sidebar.multiselect("Cidade:", options=cidades, default=cidades)
 
         mesos_list = [x for x in df_filtrado_base["MESORREGIÃO"].unique() if x and x != 'Não Informado']
@@ -66,11 +70,15 @@ if uploaded_file is not None:
         ]
 
         if not df_visualizacao.empty:
-            m1, m2, m3, m4, m5, m6 = st.columns(6)
+            # Ajustado para 7 colunas para caber o DRE Acumulado
+            m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
             
             venda_total = df_visualizacao["VENDA MAR'26"].sum()
             qtd_lojas_total = df_visualizacao["LOJAS"].nunique()
             media_dre = df_visualizacao["DRE FEV'26"].mean() * 100 
+            # NOVA MÉTRICA: DRE Acumulado
+            media_dre_ac = df_visualizacao["DRE_AC FEV'26"].mean() * 100
+            
             ticket_medio = df_visualizacao["TICKET FSJ MAR'26"].mean()
             media_faturamento = df_visualizacao["MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"].mean()
             media_populacao = df_visualizacao["POPULAÇÃO RAIO DE 1KM"].mean()
@@ -78,11 +86,13 @@ if uploaded_file is not None:
             m1.metric("Qtd de Lojas", f"{qtd_lojas_total}")
             m2.metric("Venda Total", f"R$ {venda_total/1_000_000:.1f}M")
             m3.metric("Média DRE", f"{media_dre:.2f}%")
-            m4.metric("Ticket Médio", f"R$ {ticket_medio:.2f}")
-            m5.metric("Média Fat. Anual", f"R$ {media_faturamento:,.0f}")
-            m6.metric("Média População (1km)", f"{int(media_populacao):,}")
+            m4.metric("DRE Acumulado", f"{media_dre_ac:.2f}%") # Adicionado aqui
+            m5.metric("Ticket Médio", f"R$ {ticket_medio:.2f}")
+            m6.metric("Média Fat. Mensal", f"R$ {media_faturamento:,.0f}")
+            m7.metric("Média População", f"{int(media_populacao):,}")
 
             st.divider()
+            # ... (Restante do seu código de gráficos permanece igual)
             st.subheader("Eficiência e Hierarquia")
             foco_porte = st.selectbox("Filtrar detalhamento por Porte:", 
                                      ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
@@ -114,8 +124,8 @@ if uploaded_file is not None:
 
     # --- ABA 2: EXPANSÃO ---
     with tab_expansao:
+        # (Seu código da aba de expansão...)
         st.header("Análise Estratégica para Expansão")
-        
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             fat_min = st.slider("Faturamento Mínimo Desejado (R$):", 0, 1500000, 500000, step=50000)
@@ -145,48 +155,10 @@ if uploaded_file is not None:
                                   legend=dict(title=None, orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5))
             
             st.plotly_chart(fig_exp, use_container_width=True)
-
-            # --- NOVA LÓGICA DE RECOMENDAÇÃO INDIVIDUALIZADA POR ESTADO ---
-            st.subheader("Observações Estratégicas por Estado")
             
-            # Pegamos os estados que aparecem no filtro de sucesso
-            estados_sucesso = sorted(df_sucesso["UF"].unique())
-            
-            for estado in estados_sucesso:
-                # Dados específicos do estado dentro das lojas de sucesso
-                df_estado_sucesso = df_sucesso[df_sucesso["UF"] == estado]
-                total_lojas_estado = len(df_estado_sucesso)
-                
-                # Agrupar por porte para achar o melhor
-                resumo_porte = df_estado_sucesso.groupby("TAMANHO DA CIDADE").agg({
-                    "VENDA MAR'26": "mean",
-                    "LOJAS": "count"
-                }).reset_index()
-                
-                # Critério: Maior faturamento médio
-                melhor_porte_row = resumo_porte.sort_values(by="VENDA MAR'26", ascending=False).iloc[0]
-                
-                nome_porte = melhor_porte_row["TAMANHO DA CIDADE"]
-                fat_medio = melhor_porte_row["VENDA MAR'26"]
-                qtd_no_porte = melhor_porte_row["LOJAS"]
-                representatividade = (qtd_no_porte / total_lojas_estado) * 100
-                
-                # Exibição do Insight por Estado
-                st.success(f"📍 **Estado: {estado}** | O melhor porte para expandir é **{nome_porte}**. "
-                           f"Ele possui o maior faturamento médio (**R$ {fat_medio:,.2f}**) e representa "
-                           f"**{representatividade:.1f}%** das unidades de sucesso mapeadas neste estado.")
-
-            st.divider()
             st.subheader("Matriz de Oportunidade Detalhada")
-            st.dataframe(
-                df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False]).style.format({
-                    "Faturamento Médio": "R$ {:,.2f}",
-                    "Margem DRE Média": "{:.2%}"
-                }), 
-                use_container_width=True
-            )
+            st.dataframe(df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False]), use_container_width=True)
         else:
-            st.error("Nenhum dado atende aos critérios de faturamento e DRE selecionados.")
-
+            st.error("Nenhum dado atende aos critérios selecionados.")
 else:
     st.info("Por favor, faça o upload do arquivo Excel na barra lateral para começar.")
