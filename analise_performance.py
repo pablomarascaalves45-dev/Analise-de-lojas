@@ -232,12 +232,7 @@ if uploaded_file is not None:
                         lojas_disponiveis = sorted(list(df_inauguracoes[df_inauguracoes["UF"] == uf_selecionada]["Desc. Loja"].unique()))
                     else:
                         lojas_disponiveis = sorted(list(df_inauguracoes["Desc. Loja"].unique()))
-                    
-                    # AJUSTE PEDIDO: Adicionada a opção para ignorar/desconsiderar uma loja no topo da lista
-                    loja_selecionada = st.selectbox(
-                        "Selecione uma Loja Específica para detalhar:", 
-                        ["Desconsiderar Loja (Apenas Estado)"] + lojas_disponiveis
-                    )
+                    loja_selecionada = st.selectbox("Selecione uma Loja Específica para detalhar:", ["Desconsiderar Loja (Apenas Estado)"] + lojas_disponiveis)
 
                 # --- PROCESSAMENTO DOS DADOS PARA O GRÁFICO (MELT) ---
                 # Extrai a evolução cronológica pura do faturamento
@@ -256,26 +251,24 @@ if uploaded_file is not None:
                 # Geração de visões baseadas nos filtros
                 if uf_selecionada != "Todos":
                     df_estado_curva = df_melted[df_melted["UF"] == uf_selecionada].groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
-                    titulo_estado = f"Média do Estado ({uf_selecionada})"
+                    label_estado = f"Média do Estado ({uf_selecionada})"
                 else:
                     df_estado_curva = df_melted.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
-                    titulo_estado = "Média Geral de Todos Estados"
+                    label_estado = "Média Geral de Todos Estados"
 
-                df_estado_curva["Tipo"] = "Média Estado"
-                
-                # AJUSTE NA LÓGICA DE PLOTAGEM E FILTRO:
+                df_estado_curva["Tipo"] = label_estado
+
+                # Ajuste para evitar NameError definindo df_loja_especifica de forma segura
                 if loja_selecionada != "Desconsiderar Loja (Apenas Estado)":
                     df_loja_especifica = df_melted[df_melted["Desc. Loja"] == loja_selecionada]
-                    if uf_selecionada != "Todos":
-                        titulo_grafico = f"Evolução Temporal: Loja {loja_selecionada} vs Média do Estado ({uf_selecionada})"
-                    else:
-                        titulo_grafico = f"Evolução Temporal: Loja {loja_selecionada} vs Média Geral de Todos Estados"
-                        
+                    titulo_grafico = f"Evolução Temporal: Loja {loja_selecionada} vs {label_estado}"
+                    
                     df_loja_especifica_plot = df_loja_especifica[["Mês/Ano", "Faturamento"]].copy()
                     df_loja_especifica_plot["Tipo"] = f"Loja: {loja_selecionada}"
                     df_plot_final = pd.concat([df_loja_especifica_plot, df_estado_curva], ignore_index=True)
                 else:
-                    titulo_grafico = f"Evolução Temporal: {titulo_estado}"
+                    df_loja_especifica = pd.DataFrame()
+                    titulo_grafico = f"Evolução Temporal: {label_estado}"
                     df_plot_final = df_estado_curva
 
                 fig_curva = px.line(
@@ -290,12 +283,11 @@ if uploaded_file is not None:
                 st.divider()
                 st.subheader("Tempo de Maturação (Rampa de Faturamento > R$ 500k)")
                 
-                # AJUSTE NA EXIBIÇÃO DAS MÉTRICAS:
+                # Se uma loja específica estiver selecionada, renderiza duas colunas normalmente
                 if loja_selecionada != "Desconsiderar Loja (Apenas Estado)":
                     col_m1, col_m2 = st.columns(2)
                     
                     with col_m1:
-                        # Regra para Loja Selecionada
                         df_loja_cronologico = df_loja_especifica.dropna(subset=["Faturamento"]).reset_index()
                         meses_ate_500k_loja = "Não atingiu faturamento > 500k no período"
                         
@@ -309,7 +301,6 @@ if uploaded_file is not None:
                         st.metric(label=f"Tempo para a loja '{loja_selecionada}' faturar > 500k", value=meses_ate_500k_loja)
 
                     with col_m2:
-                        # Regra para o Estado Selecionado (Média)
                         df_uf_contexto = df_melted if uf_selecionada == "Todos" else df_melted[df_melted["UF"] == uf_selecionada]
                         df_uf_cronologico = df_uf_contexto.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
                         meses_ate_500k_uf = "Média do Estado não atingiu > 500k"
@@ -323,7 +314,24 @@ if uploaded_file is not None:
                             
                         st.metric(label=f"Tempo médio do Estado ({uf_selecionada}) para faturar > 500k", value=meses_ate_500k_uf)
                 else:
-                    # Se desconsiderar a loja, mostra em largura total apenas a métrica agregada do Estado
-                    df_uf_contexto = df_melted if uf_selecionada == "Todos" else df_melted[df_melted["UF"] == uf_selecionada]
-                    df_uf_cronologico = df_uf_contexto.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
-                    meses_ate_500k_uf = "Média do Estado não atingiu > 50
+                    # Se não houver loja selecionada, exibe apenas a métrica regional consolidada em largura total
+                    df_uf_context = df_melted if uf_selecionada == "Todos" else df_melted[df_melted["UF"] == uf_selecionada]
+                    df_uf_cronologico = df_uf_context.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
+                    meses_ate_500k_uf = "Média regional não atingiu > 500k"
+                    
+                    contador_uf = 1
+                    for index, row in df_uf_cronologico.iterrows():
+                        if row["Faturamento"] >= 500000:
+                            meses_ate_500k_uf = f"Em média {contador_uf} mês(es)"
+                            break
+                        contador_uf += 1
+                        
+                    st.metric(label=f"Tempo médio regional ({uf_selecionada}) para faturar > 500k (Visão Consolidada)", value=meses_ate_500k_uf)
+
+            else:
+                st.error("Não foi possível processar os dados das planilhas de safras anexadas.")
+        else:
+            st.info("💡 Para visualizar as curvas de faturamento dos anos passados e o indicador de 500k, realize o upload de um ou mais arquivos de 'Inaugurações' na barra lateral.")
+
+else:
+    st.info("Por favor, faça o upload do arquivo Excel principal na barra lateral para começar.")
