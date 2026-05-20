@@ -192,4 +192,130 @@ if uploaded_file is not None:
             st.plotly_chart(fig_exp, use_container_width=True)
             
             st.subheader("Matriz de Oportunidade Detalhada")
-            st.dataframe(df_analise.sort_values(by
+            st.dataframe(df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False]), use_container_width=True)
+        else:
+            st.error("Nenhum dado atende aos critérios selecionados.")
+
+    # --- NOVA ABA 3: CURVA DE FATURAMENTO HISTÓRICA (SAFRAS) ---
+    with tab_curva_faturamento:
+        st.header("Análise de Curva de Faturamento com o Passar dos Anos")
+        
+        if uploaded_inauguracoes:
+            df_inauguracoes = processar_inauguracoes(uploaded_inauguracoes)
+            
+            if not df_inauguracoes.empty:
+                # Mapeia colunas no formato 'Vendas MM/AAAA'
+                col_vendas = [c for c in df_inauguracoes.columns if re.match(r'Vendas\s+\d{2}/\d{4}', c)]
+                
+                # Conversão das colunas de vendas mapeadas para valores numéricos limpos
+                for col in col_vendas:
+                    df_inauguracoes[col] = pd.to_numeric(df_inauguracoes[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
+                
+                # Procura associar o Estado (UF) às lojas baseado no primeiro arquivo (df principal)
+                if "Desc. Loja" in df_inauguracoes.columns and "LOJAS" in df.columns and "UF" in df.columns:
+                    depara_uf = df.set_index("LOJAS")["UF"].to_dict()
+                    df_inauguracoes["UF"] = df_inauguracoes["Desc. Loja"].map(depara_uf).fillna("Não Informado")
+                elif "UF" not in df_inauguracoes.columns:
+                    df_inauguracoes["UF"] = "Não Informado"
+
+                # --- FILTROS DE VISUALIZAÇÃO DA CURVA ---
+                st.subheader("Configurações do Gráfico Dinâmico")
+                c_filtro1, c_filtro2 = st.columns(2)
+                
+                with c_filtro1:
+                    ufs_disponiveis = sorted(list(df_inauguracoes["UF"].unique()))
+                    uf_selecionada = st.selectbox("Selecione o Estado para Análise de Curva Média:", ["Todos"] + ufs_disponiveis)
+                    
+                with c_filtro2:
+                    # Filtra a listagem de lojas pelo estado previamente selecionado para facilitar a busca
+                    if uf_selecionada != "Todos":
+                        lojas_disponiveis = sorted(list(df_inauguracoes[df_inauguracoes["UF"] == uf_selecionada]["Desc. Loja"].unique()))
+                    else:
+                        lojas_disponiveis = sorted(list(df_inauguracoes["Desc. Loja"].unique()))
+                    loja_selecionada = st.selectbox("Selecione uma Loja Específica para detalhar:", lojas_disponiveis)
+
+                # --- PROCESSAMENTO DOS DADOS PARA O GRÁFICO (MELT) ---
+                # Extrai a evolução cronológica pura do faturamento
+                df_melted = df_inauguracoes.melt(
+                    id_vars=["Desc. Loja", "UF"], 
+                    value_vars=col_vendas, 
+                    var_name="Periodo", 
+                    value_name="Faturamento"
+                )
+                # Limpa a string "Vendas " para ordenar por data real no eixo X
+                df_melted["Data_Eixo"] = df_melted["Periodo"].str.replace(r'Vendas\s+', '', regex=True)
+                df_melted["Data_Eixo"] = pd.to_datetime(df_melted["Data_Eixo"], format='%m/%Y', errors='coerce')
+                df_melted = df_melted.sort_values("Data_Eixo")
+                df_melted["Mês/Ano"] = df_melted["Data_Eixo"].dt.strftime('%m/%Y')
+
+                # Geração de visões baseadas nos filtros
+                df_loja_especifica = df_melted[df_melted["Desc. Loja"] == loja_selecionada]
+                
+                if uf_selecionada != "Todos":
+                    df_estado_curva = df_melted[df_melted["UF"] == uf_selecionada].groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
+                    titulo_grafico = f"Evolução Temporal: Loja {loja_selecionada} vs Média do Estado ({uf_selecionada})"
+                else:
+                    df_estado_curva = df_melted.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
+                    titulo_grafico = f"Evolução Temporal: Loja {loja_selecionada} vs Média Geral de Todos Estados"
+
+                # Junta as duas curvas no mesmo plot (Linha da Loja e Linha da Média do Estado)
+                df_estado_curva["Tipo"] = "Média Estado"
+                df_loja_especifica_plot = df_loja_especifica[["Mês/Ano", "Faturamento"]].copy()
+                df_loja_especifica_plot["Tipo"] = f"Loja: {loja_selecionada}"
+                
+                df_plot_final = pd.concat([df_loja_especifica_plot, df_estado_curva], ignore_index=True)
+
+                fig_curva = px.line(
+                    df_plot_final, x="Mês/Ano", y="Faturamento", color="Tipo",
+                    title=titulo_grafico, markers=True,
+                    labels={"Faturamento": "Faturamento (R$)", "Mês/Ano": "Período Analisado"}
+                )
+                fig_curva.update_layout(yaxis_tickprefix="R$ ", yaxis_tickformat=",.")
+                st.plotly_chart(fig_curva, use_container_width=True)
+
+                # --- CÁLCULO DE MÉTRICA DE TEMPO ATÉ ATINGIR 500K ---
+                st.divider()
+                st.subheader("Tempo de Maturação (Rampa de Faturamento > R$ 500k)")
+                
+                col_m1, col_m2 = st.columns(2)
+                
+                with col_m1:
+                    # Regra para Loja Selecionada
+                    # Verifica nas colunas relativas de evolução ('Vendas 1 mes apos...', 'Vendas 6 meses...', 'Vendas 12 meses...')
+                    # Ou de forma cronológica sequencial ordenada por data
+                    df_loja_cronologico = df_loja_especifica.dropna(subset=["Faturamento"]).reset_index()
+                    meses_ate_500k_loja = "Não atingiu faturamento > 500k no período"
+                    
+                    contador = 1
+                    for index, row in df_loja_cronologico.iterrows():
+                        if row["Faturamento"] >= 500000:
+                            meses_ate_500k_loja = f"{contador} mês(es) após início do histórico registrado"
+                            break
+                        contador += 1
+                        
+                    st.metric(label=f"Tempo para a loja '{loja_selecionada}' faturar > 500k", value=meses_ate_500k_loja)
+
+                with col_m2:
+                    # Regra para o Estado Selecionado (Média)
+                    df_uf_contexto = df_melted if uf_selecionada == "Todos" else df_melted[df_melted["UF"] == uf_selecionada]
+                    
+                    # Calcula faturamento médio mês a mês cronológico para achar a rampa média do Estado
+                    df_uf_cronologico = df_uf_contexto.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
+                    meses_ate_500k_uf = "Média do Estado não atingiu > 500k"
+                    
+                    contador_uf = 1
+                    for index, row in df_uf_cronologico.iterrows():
+                        if row["Faturamento"] >= 500000:
+                            meses_ate_500k_uf = f"Em média {contador_uf} mês(es)"
+                            break
+                        contador_uf += 1
+                        
+                    st.metric(label=f"Tempo médio do Estado ({uf_selecionada}) para faturar > 500k", value=meses_ate_500k_uf)
+
+            else:
+                st.error("Não foi possível processar os dados das planilhas de safras anexadas.")
+        else:
+            st.info("💡 Para visualizar as curvas de faturamento dos anos passados e o indicador de 500k, realize o upload de um ou mais arquivos de 'Inaugurações' na barra lateral.")
+
+else:
+    st.info("Por favor, faça o upload do arquivo Excel principal na barra lateral para começar.")
