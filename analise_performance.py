@@ -38,10 +38,8 @@ arquivo_carregado = st.sidebar.file_uploader(
 
 # Função robusta para tratar e limpar os dados após o upload
 def tratar_dados(df):
-    # Forçar nomes de colunas como string e remover espaços extras nas pontas
     df.columns = df.columns.astype(str).str.strip()
     
-    # Lista das colunas críticas que precisam ser puramente numéricas para os cálculos
     colunas_numericas = [
         "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", 
         "Aluguel ABRI'26", 
@@ -50,22 +48,18 @@ def tratar_dados(df):
         "DRE ABRI'26"
     ]
     
-    # Limpa e converte cada coluna para numérico (corrige textos errados transformando em nulo)
     for col in colunas_numericas:
         if col in df.columns:
             if df[col].dtype == 'object':
-                # Remove pontos de milhar e troca vírgula por ponto decimal se for texto
                 df[col] = df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Tratamento rigoroso de datas para evitar erros de chave vazia
     if 'DATA DE ABERTURA' in df.columns:
         df['DATA DE ABERTURA'] = pd.to_datetime(df['DATA DE ABERTURA'], errors='coerce')
         df['ANO_ABERTURA'] = df['DATA DE ABERTURA'].dt.year.fillna(0).astype(int)
     else:
         df['ANO_ABERTURA'] = 0
     
-    # Classificação padronizada de Estacionamento (Trata "Não", "1 à 5", "Maior que 10", etc)
     if 'ESTACIONAMENTO' in df.columns:
         df['TEM_ESTACIONAMENTO'] = df['ESTACIONAMENTO'].apply(lambda x: 'Não' if str(x).strip() == 'Não' else 'Sim')
     else:
@@ -73,10 +67,8 @@ def tratar_dados(df):
         
     return df
 
-# Fluxo de verificação do arquivo
 if arquivo_carregado is not None:
     try:
-        # Identifica a extensão do arquivo anexado e lê de forma adequada
         nome_arquivo = arquivo_carregado.name.lower()
         
         if nome_arquivo.endswith('.csv'):
@@ -86,7 +78,6 @@ if arquivo_carregado is not None:
             aba_alvo = 'Lojas' if 'Lojas' in excel_file.sheet_names else excel_file.sheet_names[0]
             df_bruto = pd.read_excel(arquivo_carregado, sheet_name=aba_alvo)
             
-        # Executa a limpeza pesada dos dados
         df_lojas = tratar_dados(df_bruto)
         
         # ==========================================
@@ -151,15 +142,13 @@ if arquivo_carregado is not None:
         st.sidebar.markdown("---")
         st.sidebar.header("🎯 Filtros de Expansão")
 
-        # Filtra estritamente a janela de anos solicitada pela diretoria
         anos_solicitados = [2020, 2021, 2022, 2023, 2024, 2025]
         df_safras_all = df_lojas[df_lojas['ANO_ABERTURA'].isin(anos_solicitados)].copy()
 
-        # Monta as opções dinâmicas da barra lateral baseadas nas colunas limpas
         lista_anos = sorted([int(x) for x in df_safras_all['ANO_ABERTURA'].unique() if x in anos_solicitados])
         
         if not lista_anos:
-            st.warning("Nota: Nenhum dado de abertura correspondente aos anos de 2020 a 2025 foi identificado na coluna 'DATA DE ABERTURA'.")
+            st.warning("Nota: Nenhum dado de abertura correspondente aos anos de 2020 a 2025 foi encontrado.")
             ano_selecionado = []
         else:
             ano_selecionado = st.sidebar.multiselect("Filtrar por Ano de Abertura", options=lista_anos, default=lista_anos)
@@ -167,28 +156,24 @@ if arquivo_carregado is not None:
         lista_ufs = sorted([str(x) for x in df_safras_all['UF'].dropna().unique()])
         uf_selecionada = st.sidebar.multiselect("Filtrar por Estado (UF)", options=lista_ufs, default=lista_ufs)
 
-        # Filtra os dados com base na escolha do usuário
         df_filtrado = df_safras_all[
             (df_safras_all['ANO_ABERTURA'].isin(ano_selecionado)) & 
             (df_safras_all['UF'].isin(uf_selecionada))
         ].copy()
 
         if df_filtrado.empty:
-            st.warning("Selecione os Anos e Estados desejados na barra lateral para projetar a safra de expansão.")
+            st.warning("Selecione os Anos e Estados desejados na barra lateral.")
         else:
-            # Cálculos consolidados exigidos para o bloco 4
             safra_total_lojas = len(df_filtrado)
             safra_med_fat = df_filtrado["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
             safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean()
             safra_med_m2 = df_filtrado["M² Salão Venda"].mean()
             safra_venda_abr = df_filtrado["VENDA ABR'26"].sum()
             
-            # Lojas com prejuízo no mês (DRE operacional abaixo de 0)
             safra_negativas = (df_filtrado["DRE ABRI'26"] < 0).sum()
             safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
             safra_sem_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Não').sum()
 
-            # Plotagem dos cartões de métricas (KPIs)
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total de Aberturas", f"{safra_total_lojas} PDVs")
             m2.metric("Fat. Médio Mensal (Safra)", f"R$ {safra_med_fat:,.2f}" if not pd.isna(safra_med_fat) else "N/A")
@@ -201,10 +186,12 @@ if arquivo_carregado is not None:
             m7.metric("Safra Com Vagas", f"{safra_com_vagas} PDVs")
             m8.metric("Safra Sem Vagas", f"{safra_sem_vagas} PDVs")
 
-            # Gráfico de barras: Distribuição de aberturas por UF e por Ano
+            # ----------------------------------------------------
+            # GRÁFICO 1: GRÁFICO DE BARRAS POR UF COM RÓTULOS NO TOPO
+            # ----------------------------------------------------
             st.markdown("### 🗺️ Volume de Aberturas por Estado (UF)")
             df_uf_group = df_filtrado.groupby(['UF', 'ANO_ABERTURA']).size().reset_index(name='Quantidade de Aberturas')
-            df_uf_group['ANO_ABERTURA'] = df_uf_group['ANO_ABERTURA'].astype(str) # Garante legenda categórica perfeita
+            df_uf_group['ANO_ABERTURA'] = df_uf_group['ANO_ABERTURA'].astype(str)
             
             fig_uf = px.bar(
                 df_uf_group, 
@@ -214,12 +201,48 @@ if arquivo_carregado is not None:
                 title="Histórico de Expansão (Aberturas por Estado)",
                 labels={'UF': 'Estado', 'ANO_ABERTURA': 'Ano de Abertura'},
                 barmode='stack',
-                color_continuous_scale=px.colors.sequential.Blues
+                color_continuous_scale=px.colors.sequential.Blues,
+                text_auto=True # <--- ADICIONADO: Exibe os valores dentro/no topo das barras
             )
             fig_uf.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_uf, use_container_width=True)
 
-            # Tabela Executiva Consolidada
+            # ----------------------------------------------------
+            # GRÁFICO 2: GRÁFICO DE LINHA HISTÓRICA DE ANOS (SOLICITADO)
+            # ----------------------------------------------------
+            st.markdown("### 📉 Evolução Temporal de Aberturas (2020 - 2025)")
+            
+            # Agrupa para contar as lojas abertas por ano de forma consistente
+            df_ano_group = df_filtrado.groupby('ANO_ABERTURA').size().reset_index(name='Quantidade de Lojas')
+            
+            # Garante que todos os anos da análise apareçam na linha, mesmo se algum ano tiver zero aberturas filtradas
+            df_base_anos = pd.DataFrame({'ANO_ABERTURA': ano_selecionado})
+            df_ano_group = pd.merge(df_base_anos, df_ano_group, on='ANO_ABERTURA', how='left').fillna(0)
+            df_ano_group['Quantidade de Lojas'] = df_ano_group['Quantidade de Lojas'].astype(int)
+            df_ano_group = df_ano_group.sort_values('ANO_ABERTURA')
+            
+            # Cria o rótulo de texto personalizado solicitado: "X lojas"
+            df_ano_group['Rotulo'] = df_ano_group['Quantidade de Lojas'].apply(lambda x: f"{x} lojas")
+
+            fig_linha = px.line(
+                df_ano_group,
+                x='ANO_ABERTURA',
+                y='Quantidade de Lojas',
+                title="Evolução de Aberturas por Ano (Visão Crítica de Volume)",
+                labels={'ANO_ABERTURA': 'Ano de Abertura', 'Quantidade de Lojas': 'Lojas Abertas'},
+                markers=True, # Adiciona bolinhas nos pontos
+                text='Rotulo' # <--- ADICIONADO: Exibe o texto "100 lojas" em cima do ponto da linha
+            )
+            # Melhora o posicionamento do texto em cima do ponto e limpa o fundo gráfico
+            fig_linha.update_traces(textposition="top center", line=dict(color='#1E3A8A', width=3))
+            fig_linha.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(tickmode='linear') # Força exibir cada ano um a um no eixo X
+            )
+            st.plotly_chart(fig_linha, use_container_width=True)
+
+            # Tabela Executiva Detalhada
             st.markdown("### 📋 Listagem de Lojas da Janela de Expansão")
             colunas_exibicao = ['ID_LOJA', 'LOJAS', 'UF', 'ANO_ABERTURA', 
                                 "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", "Aluguel ABRI'26", 
