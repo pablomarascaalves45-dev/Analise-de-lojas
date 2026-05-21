@@ -36,17 +36,12 @@ arquivo_carregado = st.sidebar.file_uploader(
     help="Carregue o arquivo extraído para gerar o relatório dinâmico automaticamente."
 )
 
-# Função robusta e corrigida para tratamento numérico do padrão brasileiro (pt-BR)
+# Função robusta para tratar e limpar os dados após o upload
 def tratar_dados(df):
     df.columns = df.columns.astype(str).str.strip()
     
-    # Renomeia a coluna complexa para um nome seguro evitando quebra por aspas simples
-    coluna_antiga = "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"
-    if coluna_antiga in df.columns:
-        df = df.rename(columns={coluna_antiga: "MED_FAT_12M"})
-    
     colunas_numericas = [
-        "MED_FAT_12M", 
+        "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", 
         "Aluguel ABRI'26", 
         "M² Salão Venda", 
         "VENDA ABR'26", 
@@ -55,15 +50,16 @@ def tratar_dados(df):
     
     for col in colunas_numericas:
         if col in df.columns:
-            # Se a coluna veio como texto (object/string), limpa os pontos de milhar e troca a vírgula por ponto
+            # CORREÇÃO DEFINITIVA DA LEITURA DE TEXTO DO PADRÃO PT-BR (Ex: 542.437,27)
             if df[col].dtype == 'object':
                 df[col] = df[col].astype(str).str.strip()
-                # Remove símbolos comuns caso existam (R$, espaços)
                 df[col] = df[col].str.replace('R$', '', regex=False).str.strip()
-                # Substitui pontos de milhar por vazio e depois a vírgula decimal por ponto
-                df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+                
+                # Se houver ponto e vírgula, removemos o ponto de milhar e mudamos a vírgula para ponto decimal
+                if ',' in df[col].values[0] or '.' in df[col].values[0]:
+                    df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
             
-            # Força a conversão para número puro. Se houver erro, vira NaN (não quebra o cálculo)
+            # Converte para número puro do Python
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
     if 'DATA DE ABERTURA' in df.columns:
@@ -92,20 +88,15 @@ if arquivo_carregado is not None:
             
         df_lojas = tratar_dados(df_bruto)
         
-        # Identificador unificado da coluna tratada de faturamento médio
-        col_faturamento_padrao = "MED_FAT_12M"
-        
         # ==========================================
         # 1° BLOCO: VISÃO GERAL (TOTAL DA REDE)
         # ==========================================
         st.header("🏢 1° Bloco: Panorama Geral da Rede")
 
         total_lojas = int(df_lojas['ID_LOJA'].nunique()) if 'ID_LOJA' in df_lojas.columns else len(df_lojas)
-        
-        # Ignora valores nulos (NaN) para trazer a média matemática exata das linhas preenchidas
-        med_fat = df_lojas[col_faturamento_padrao].mean(skipna=True)
-        med_aluguel = df_lojas["Aluguel ABRI'26"].mean(skipna=True)
-        med_m2 = df_lojas["M² Salão Venda"].mean(skipna=True)
+        med_fat = df_lojas["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
+        med_aluguel = df_lojas["Aluguel ABRI'26"].mean()
+        med_m2 = df_lojas["M² Salão Venda"].mean()
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -133,21 +124,21 @@ if arquivo_carregado is not None:
             st.subheader("✅ 2° Bloco: Lojas COM Estacionamento")
             c1, c2 = st.columns(2)
             c1.metric("Qtd Lojas com Vagas", f"{len(df_com_vagas)} PDVs")
-            c2.metric("Fat. Médio Mensal", f"R$ {df_com_vagas[col_faturamento_padrao].mean(skipna=True):,.2f}")
+            c2.metric("Fat. Médio Mensal", f"R$ {df_com_vagas['MÉDIA FATURAMENTO DE MAI\'25 ATÉ ABR\'26'].mean():,.2f}")
             
             c3, c4 = st.columns(2)
-            c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean(skipna=True):,.2f}")
-            c4.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean(skipna=True):,.1f} m²")
+            c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
+            c4.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
 
         with col_sem:
             st.subheader("❌ 3° Bloco: Lojas SEM Estacionamento")
             s1, s2 = st.columns(2)
             s1.metric("Qtd Lojas sem Vagas", f"{len(df_sem_vagas)} PDVs")
-            s2.metric("Fat. Médio Mensal", f"R$ {df_sem_vagas[col_faturamento_padrao].mean(skipna=True):,.2f}")
+            s2.metric("Fat. Médio Mensal", f"R$ {df_sem_vagas['MÉDIA FATURAMENTO DE MAI\'25 ATÉ ABR\'26'].mean():,.2f}")
             
             s3, s4 = st.columns(2)
-            s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean(skipna=True):,.2f}")
-            s4.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean(skipna=True):,.1f} m²")
+            s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
+            s4.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
 
         st.markdown("---")
 
@@ -182,10 +173,10 @@ if arquivo_carregado is not None:
             st.warning("Selecione os Anos e Estados desejados na barra lateral.")
         else:
             safra_total_lojas = len(df_filtrado)
-            safra_med_fat = df_filtrado[col_faturamento_padrao].mean(skipna=True)
-            safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean(skipna=True)
-            safra_med_m2 = df_filtrado["M² Salão Venda"].mean(skipna=True)
-            safra_venda_abr = df_filtrado["VENDA ABR'26"].sum(skipna=True)
+            safra_med_fat = df_filtrado["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
+            safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean()
+            safra_med_m2 = df_filtrado["M² Salão Venda"].mean()
+            safra_venda_abr = df_filtrado["VENDA ABR'26"].sum()
             
             safra_negativas = (df_filtrado["DRE ABRI'26"] < 0).sum()
             safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
@@ -225,17 +216,20 @@ if arquivo_carregado is not None:
             st.plotly_chart(fig_uf, use_container_width=True)
 
             # ----------------------------------------------------
-            # GRÁFICO 2: GRÁFICO DE LINHA HISTÓRICA DE ANOS
+            # GRÁFICO 2: GRÁFICO DE LINHA HISTÓRICA DE ANOS (SOLICITADO)
             # ----------------------------------------------------
             st.markdown("### 📉 Evolução Temporal de Aberturas (2020 - 2025)")
             
+            # Agrupa para contar as lojas abertas por ano de forma consistente
             df_ano_group = df_filtrado.groupby('ANO_ABERTURA').size().reset_index(name='Quantidade de Lojas')
             
+            # Garante que todos os anos da análise apareçam na linha, mesmo se algum ano tiver zero aberturas filtradas
             df_base_anos = pd.DataFrame({'ANO_ABERTURA': ano_selecionado})
             df_ano_group = pd.merge(df_base_anos, df_ano_group, on='ANO_ABERTURA', how='left').fillna(0)
             df_ano_group['Quantidade de Lojas'] = df_ano_group['Quantidade de Lojas'].astype(int)
             df_ano_group = df_ano_group.sort_values('ANO_ABERTURA')
             
+            # Cria o rótulo de texto personalizado solicitado: "X lojas"
             df_ano_group['Rotulo'] = df_ano_group['Quantidade de Lojas'].apply(lambda x: f"{x} lojas")
 
             fig_linha = px.line(
@@ -244,31 +238,28 @@ if arquivo_carregado is not None:
                 y='Quantidade de Lojas',
                 title="Evolução de Aberturas por Ano (Visão Crítica de Volume)",
                 labels={'ANO_ABERTURA': 'Ano de Abertura', 'Quantidade de Lojas': 'Lojas Abertas'},
-                markers=True, 
-                text='Rotulo' 
+                markers=True, # Adiciona bolinhas nos pontos
+                text='Rotulo' # <--- ADICIONADO: Exibe o texto "100 lojas" em cima do ponto da linha
             )
+            # Melhora o posicionamento do texto em cima do ponto e limpa o fundo gráfico
             fig_linha.update_traces(textposition="top center", line=dict(color='#1E3A8A', width=3))
             fig_linha.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)', 
                 paper_bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(tickmode='linear') 
+                xaxis=dict(tickmode='linear') # Força exibir cada ano um a um no eixo X
             )
             st.plotly_chart(fig_linha, use_container_width=True)
 
             # Tabela Executiva Detalhada
             st.markdown("### 📋 Listagem de Lojas da Janela de Expansão")
-            
-            df_tabela_exibicao = df_filtrado.copy()
-            df_tabela_exibicao = df_tabela_exibicao.rename(columns={"MED_FAT_12M": "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"})
-            
             colunas_exibicao = ['ID_LOJA', 'LOJAS', 'UF', 'ANO_ABERTURA', 
                                 "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", "Aluguel ABRI'26", 
                                 'M² Salão Venda', "VENDA ABR'26", "DRE ABRI'26", 'TEM_ESTACIONAMENTO']
             
-            colunas_existentes = [c for c in colunas_exibicao if c in df_tabela_exibicao.columns]
+            colunas_existentes = [c for c in colunas_exibicao if c in df_filtrado.columns]
             
             st.dataframe(
-                df_tabela_exibicao[colunas_existentes].style.format({
+                df_filtrado[colunas_existentes].style.format({
                     "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26": "R$ {:,.2f}",
                     "Aluguel ABRI'26": "R$ {:,.2f}",
                     "M² Salão Venda": "{:,.1f} m²",
