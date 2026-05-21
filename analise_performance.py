@@ -18,16 +18,26 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 14px; font-weight: 500; color: #4B5563; }
     h1, h2, h3 { color: #1E3A8A; font-family: 'Segoe UI', sans-serif; }
     .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-    .stAlert { border-left: 5px solid #EF4444; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Carregamento e Tratamento de Dados
-@st.cache_data
-def load_data():
-    # Carrega o CSV das Lojas
-    df = pd.read_csv('Lojas.xlsx - Lojas.csv')
-    
+# Título do Painel Executivo
+st.title("📊 Painel de Desempenho e Expansão Comercial")
+st.markdown("Análise estratégica de faturamento, custos de ocupação, infraestrutura e safras de abertura.")
+st.markdown("---")
+
+# ==========================================
+# SEÇÃO PARA ANEXAR A PLANILHA (FILE UPLOADER)
+# ==========================================
+st.sidebar.header("📁 Carregar Base de Dados")
+arquivo_carregado = st.sidebar.file_uploader(
+    "Anexe a planilha de lojas (.csv)", 
+    type=["csv"],
+    help="Carregue o arquivo CSV correspondente à aba de Lojas para gerar o relatório."
+)
+
+# Função para tratar e limpar os dados após o upload
+def tratar_dados(df):
     # Tratamento de tipos numéricos
     df["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"] = pd.to_numeric(df["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"], errors='coerce')
     df["Aluguel ABRI'26"] = pd.to_numeric(df["Aluguel ABRI'26"], errors='coerce')
@@ -36,91 +46,4 @@ def load_data():
     df["DRE ABRI'26"] = pd.to_numeric(df["DRE ABRI'26"], errors='coerce')
     
     # Tratamento de datas e extração do Ano
-    df['DATA DE ABERTURA'] = pd.to_datetime(df['DATA DE ABERTURA'], errors='coerce')
-    df['ANO_ABERTURA'] = df['DATA DE ABERTURA'].dt.year
-    
-    # Classificação padronizada de Estacionamento
-    df['TEM_ESTACIONAMENTO'] = df['ESTACIONAMENTO'].apply(lambda x: 'Não' if str(x).strip() == 'Não' else 'Sim')
-    
-    return df
-
-try:
-    df_lojas = load_data()
-except Exception as e:
-    st.error(f"Erro ao carregar o arquivo de dados: {e}")
-    st.info("Certifique-se de que o arquivo 'Lojas.xlsx - Lojas.csv' está na mesma pasta deste script.")
-    st.stop()
-
-# Título do Painel Executivo
-st.title("📊 Painel de Desempenho e Expansão Comercial")
-st.markdown("Análise estratégica de faturamento, custos de ocupação, infraestrutura e safras de abertura.")
-st.markdown("---")
-
-# ==========================================
-# 1° BLOCO: VISÃO GERAL (TOTAL DA REDE)
-# ==========================================
-st.header("🏢 1. Panorama Geral da Rede")
-
-total_lojas = int(df_lojas['ID_LOJA'].nunique())
-med_fat = df_lojas["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
-med_aluguel = df_lojas["Aluguel ABRI'26"].mean()
-med_m2 = df_lojas["M² Salão Venda"].mean()
-
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Total de Lojas", f"{total_lojas} PDVs")
-with col2:
-    st.metric("Faturamento Médio Mensal (12m)", f"R$ {med_fat:,.2f}")
-with col3:
-    st.metric("Aluguel Médio (Abril/26)", f"R$ {med_aluguel:,.2f}")
-with col4:
-    st.metric("Metragem Média (Salão)", f"{med_m2:,.1f} m²")
-
-st.markdown("---")
-
-# ==========================================
-# 2° E 3° BLOCO: COM VS SEM ESTACIONAMENTO
-# ==========================================
-st.header("🚗 2 & 3. Impacto de Vagas de Estacionamento no Resultado")
-
-df_com_vagas = df_lojas[df_lojas['TEM_ESTACIONAMENTO'] == 'Sim']
-df_sem_vagas = df_lojas[df_lojas['TEM_ESTACIONAMENTO'] == 'Não']
-
-col_com, col_sem = st.columns(2)
-
-with col_com:
-    st.subheader("✅ Lojas COM Estacionamento")
-    c1, c2 = st.columns(2)
-    c1.metric("Qtd Lojas", f"{len(df_com_vagas)} PDVs")
-    c2.metric("Fat. Médio Mensal", f"R$ {df_com_vagas['MÉDIA FATURAMENTO DE MAI\'25 ATÉ ABR\'26'].mean():,.2f}")
-    
-    c3, c4 = st.columns(2)
-    c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-    c4.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
-
-with col_sem:
-    st.subheader("❌ Lojas SEM Estacionamento")
-    s1, s2 = st.columns(2)
-    s1.metric("Qtd Lojas", f"{len(df_sem_vagas)} PDVs")
-    s2.metric("Fat. Médio Mensal", f"R$ {df_sem_vagas['MÉDIA FATURAMENTO DE MAI\'25 ATÉ ABR\'26'].mean():,.2f}")
-    
-    s3, s4 = st.columns(2)
-    s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-    s4.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
-
-st.markdown("---")
-
-# ==========================================
-# 4° BLOCO: EXPANSÃO / SAFRAS (2020 A 2025)
-# ==========================================
-st.header("📈 4. Análise de Expansão e Safras de Abertura")
-
-# Filtros na Barra Lateral (Sidebar) para exploração interativa da diretoria
-st.sidebar.header("🎯 Filtros do Painel de Expansão")
-
-# Restringe aos anos solicitados: 2020 a 2025
-anos_solicitados = [2020, 2021, 2022, 2023, 2024, 2025]
-df_safras_all = df_lojas[df_lojas['ANO_ABERTURA'].isin(anos_solicitados)]
-
-lista_anos = sorted(df_safras_all['ANO_ABERTURA'].dropna().unique().astype(int))
-ano_selecionado = st.sidebar.multiselect("Filtrar por Ano de Abertura", options=lista_anos, default=lista_anos)
+    df['DATA DE ABERTURA'] = pd.to_datetime
