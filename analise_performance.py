@@ -229,32 +229,31 @@ if arquivo_carregado is not None:
 
             st.write("") # Espaçador
             
-            # NOVOS BLOCOS DE ANÁLISE: COM VAGAS VS SEM VAGAS
-            st.markdown("### 📊 Indicadores Médios Operacionais da Safra")
-            col_metrics_com, col_metrics_sem = st.columns(2)
+            # BLOCOS LADO A LADO UNIFICADOS (COM VAGAS VS SEM VAGAS)
+            col_lado_com, col_lado_sem = st.columns(2)
             
-            with col_metrics_com:
-                st.markdown("""<h4 style='color: #1E3A8A; font-size: 16px; margin-bottom: 12px;'>Com Estacionamento</h4>""", unsafe_allow_html=True)
-                m_c1, m_c2, m_c3, m_c4 = st.columns(4)
-                with m_c1:
+            with col_lado_com:
+                st.subheader("✅ Safra COM Estacionamento")
+                mc1, mc2, mc3, mc4 = st.columns(4)
+                with mc1:
                     st.markdown(f"""<div class="metric-card"><div class="metric-label">% Fat x Aluguel</div><div class="metric-value" style="font-size: 20px;">{med_pct_fat_com:.2f}%</div></div>""", unsafe_allow_html=True)
-                with m_c2:
+                with mc2:
                     st.markdown(f"""<div class="metric-card"><div class="metric-label">Produtividade m²</div><div class="metric-value" style="font-size: 20px;">R$ {med_prod_com:,.2f}</div></div>""", unsafe_allow_html=True)
-                with m_c3:
+                with mc3:
                     st.markdown(f"""<div class="metric-card"><div class="metric-label">Aluguel x M²</div><div class="metric-value" style="font-size: 20px;">R$ {med_aluguel_m2_com:,.2f}</div></div>""", unsafe_allow_html=True)
-                with m_c4:
+                with mc4:
                     st.markdown(f"""<div class="metric-card"><div class="metric-label">M² Salão Venda</div><div class="metric-value" style="font-size: 20px;">{med_m2_salao_com:,.1f} m²</div></div>""", unsafe_allow_html=True)
 
-            with col_metrics_sem:
-                st.markdown("""<h4 style='color: #4B5563; font-size: 16px; margin-bottom: 12px;'>Sem Estacionamento</h4>""", unsafe_allow_html=True)
-                m_s1, m_s2, m_s3, m_s4 = st.columns(4)
-                with m_s1:
+            with col_lado_sem:
+                st.subheader("❌ Safra SEM Estacionamento")
+                ms1, ms2, ms3, ms4 = st.columns(4)
+                with ms1:
                     st.markdown(f"""<div class="metric-card"><div class="metric-label">% Fat x Aluguel</div><div class="metric-value" style="font-size: 20px;">{med_pct_fat_sem:.2f}%</div></div>""", unsafe_allow_html=True)
-                with m_s2:
+                with ms2:
                     st.markdown(f"""<div class="metric-card"><div class="metric-label">Produtividade m²</div><div class="metric-value" style="font-size: 20px;">R$ {med_prod_sem:,.2f}</div></div>""", unsafe_allow_html=True)
-                with m_s3:
+                with ms3:
                     st.markdown(f"""<div class="metric-card"><div class="metric-label">Aluguel x M²</div><div class="metric-value" style="font-size: 20px;">R$ {med_aluguel_m2_sem:,.2f}</div></div>""", unsafe_allow_html=True)
-                with m_s4:
+                with ms4:
                     st.markdown(f"""<div class="metric-card"><div class="metric-label">M² Salão Venda</div><div class="metric-value" style="font-size: 20px;">{med_m2_salao_sem:,.1f} m²</div></div>""", unsafe_allow_html=True)
 
             st.markdown("---")
