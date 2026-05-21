@@ -50,16 +50,15 @@ def tratar_dados(df):
     
     for col in colunas_numericas:
         if col in df.columns:
-            # CORREÇÃO DEFINITIVA DA LEITURA DE TEXTO DO PADRÃO PT-BR (Ex: 542.437,27)
+            # CORREÇÃO DEFINITIVA GLOBAL PARA O PADRÃO PT-BR (Garante a conversão linha por linha)
             if df[col].dtype == 'object':
                 df[col] = df[col].astype(str).str.strip()
                 df[col] = df[col].str.replace('R$', '', regex=False).str.strip()
                 
-                # Se houver ponto e vírgula, removemos o ponto de milhar e mudamos a vírgula para ponto decimal
-                if ',' in df[col].values[0] or '.' in df[col].values[0]:
-                    df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+                # Substitui primeiro o ponto de milhar por vazio, e depois a vírgula decimal por ponto americano
+                df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
             
-            # Converte para número puro do Python
+            # Converte para número puro do Python (Float) de forma segura
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
     if 'DATA DE ABERTURA' in df.columns:
@@ -216,20 +215,17 @@ if arquivo_carregado is not None:
             st.plotly_chart(fig_uf, use_container_width=True)
 
             # ----------------------------------------------------
-            # GRÁFICO 2: GRÁFICO DE LINHA HISTÓRICA DE ANOS (SOLICITADO)
+            # GRÁFICO 2: GRÁFICO DE LINHA HISTÓRICA DE ANOS
             # ----------------------------------------------------
             st.markdown("### 📉 Evolução Temporal de Aberturas (2020 - 2025)")
             
-            # Agrupa para contar as lojas abertas por ano de forma consistente
             df_ano_group = df_filtrado.groupby('ANO_ABERTURA').size().reset_index(name='Quantidade de Lojas')
             
-            # Garante que todos os anos da análise apareçam na linha, mesmo se algum ano tiver zero aberturas filtradas
             df_base_anos = pd.DataFrame({'ANO_ABERTURA': ano_selecionado})
             df_ano_group = pd.merge(df_base_anos, df_ano_group, on='ANO_ABERTURA', how='left').fillna(0)
             df_ano_group['Quantidade de Lojas'] = df_ano_group['Quantidade de Lojas'].astype(int)
             df_ano_group = df_ano_group.sort_values('ANO_ABERTURA')
             
-            # Cria o rótulo de texto personalizado solicitado: "X lojas"
             df_ano_group['Rotulo'] = df_ano_group['Quantidade de Lojas'].apply(lambda x: f"{x} lojas")
 
             fig_linha = px.line(
@@ -238,15 +234,14 @@ if arquivo_carregado is not None:
                 y='Quantidade de Lojas',
                 title="Evolução de Aberturas por Ano (Visão Crítica de Volume)",
                 labels={'ANO_ABERTURA': 'Ano de Abertura', 'Quantidade de Lojas': 'Lojas Abertas'},
-                markers=True, # Adiciona bolinhas nos pontos
-                text='Rotulo' # <--- ADICIONADO: Exibe o texto "100 lojas" em cima do ponto da linha
+                markers=True,
+                text='Rotulo'
             )
-            # Melhora o posicionamento do texto em cima do ponto e limpa o fundo gráfico
             fig_linha.update_traces(textposition="top center", line=dict(color='#1E3A8A', width=3))
             fig_linha.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)', 
                 paper_bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(tickmode='linear') # Força exibir cada ano um a um no eixo X
+                xaxis=dict(tickmode='linear')
             )
             st.plotly_chart(fig_linha, use_container_width=True)
 
