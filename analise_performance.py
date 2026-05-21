@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS corporativa
+# Estilização CSS corporativa para apresentação à Diretoria
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -80,13 +80,16 @@ if arquivo_carregado is not None:
             
         df_lojas = tratar_dados(df_bruto)
         
+        # Coluna padrão para faturamento médio adotada em todo o sistema
+        col_faturamento_padrao = "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"
+        
         # ==========================================
         # 1° BLOCO: VISÃO GERAL (TOTAL DA REDE)
         # ==========================================
         st.header("🏢 1° Bloco: Panorama Geral da Rede")
 
         total_lojas = int(df_lojas['ID_LOJA'].nunique()) if 'ID_LOJA' in df_lojas.columns else len(df_lojas)
-        med_fat = df_lojas["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
+        med_fat = df_lojas[col_faturamento_padrao].mean()
         med_aluguel = df_lojas["Aluguel ABRI'26"].mean()
         med_m2 = df_lojas["M² Salão Venda"].mean()
 
@@ -94,7 +97,7 @@ if arquivo_carregado is not None:
         with col1:
             st.metric("Total de Lojas", f"{total_lojas} PDVs")
         with col2:
-            st.metric("Faturamento Médio Mensal (12m)", f"R$ {med_fat:,.2f}" if not pd.isna(med_fat) else "N/A")
+            st.metric("Faturamento Médio Mensal", f"R$ {med_fat:,.2f}" if not pd.isna(med_fat) else "N/A")
         with col3:
             st.metric("Aluguel Médio (Abril/26)", f"R$ {med_aluguel:,.2f}" if not pd.isna(med_aluguel) else "N/A")
         with col4:
@@ -116,7 +119,7 @@ if arquivo_carregado is not None:
             st.subheader("✅ 2° Bloco: Lojas COM Estacionamento")
             c1, c2 = st.columns(2)
             c1.metric("Qtd Lojas com Vagas", f"{len(df_com_vagas)} PDVs")
-            c2.metric("Fat. Médio Mensal", f"R$ {df_com_vagas['MÉDIA FATURAMENTO DE MAI\'25 ATÉ ABR\'26'].mean():,.2f}")
+            c2.metric("Fat. Médio Mensal", f"R$ {df_com_vagas[col_faturamento_padrao].mean():,.2f}")
             
             c3, c4 = st.columns(2)
             c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
@@ -126,7 +129,7 @@ if arquivo_carregado is not None:
             st.subheader("❌ 3° Bloco: Lojas SEM Estacionamento")
             s1, s2 = st.columns(2)
             s1.metric("Qtd Lojas sem Vagas", f"{len(df_sem_vagas)} PDVs")
-            s2.metric("Fat. Médio Mensal", f"R$ {df_sem_vagas['MÉDIA FATURAMENTO DE MAI\'25 ATÉ ABR\'26'].mean():,.2f}")
+            s2.metric("Fat. Médio Mensal", f"R$ {df_sem_vagas[col_faturamento_padrao].mean():,.2f}")
             
             s3, s4 = st.columns(2)
             s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
@@ -164,103 +167,3 @@ if arquivo_carregado is not None:
         if df_filtrado.empty:
             st.warning("Selecione os Anos e Estados desejados na barra lateral.")
         else:
-            safra_total_lojas = len(df_filtrado)
-            safra_med_fat = df_filtrado["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
-            safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean()
-            safra_med_m2 = df_filtrado["M² Salão Venda"].mean()
-            safra_venda_abr = df_filtrado["VENDA ABR'26"].sum()
-            
-            safra_negativas = (df_filtrado["DRE ABRI'26"] < 0).sum()
-            safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
-            safra_sem_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Não').sum()
-
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Total de Aberturas", f"{safra_total_lojas} PDVs")
-            m2.metric("Fat. Médio Mensal (Safra)", f"R$ {safra_med_fat:,.2f}" if not pd.isna(safra_med_fat) else "N/A")
-            m3.metric("Aluguel Médio (Safra)", f"R$ {safra_med_aluguel:,.2f}" if not pd.isna(safra_med_aluguel) else "N/A")
-            m4.metric("Metragem Média (Safra)", f"{safra_med_m2:,.1f} m²" if not pd.isna(safra_med_m2) else "N/A")
-
-            m5, m6, m7, m8 = st.columns(4)
-            m5.metric("Faturamento Abril/26 (Somado)", f"R$ {safra_venda_abr:,.2f}" if not pd.isna(safra_venda_abr) else "N/A")
-            m6.metric("Lojas com DRE Negativo", f"{safra_negativas} PDVs", delta=f"{safra_negativas} operando no vermelho", delta_color="inverse")
-            m7.metric("Safra Com Vagas", f"{safra_com_vagas} PDVs")
-            m8.metric("Safra Sem Vagas", f"{safra_sem_vagas} PDVs")
-
-            # ----------------------------------------------------
-            # GRÁFICO 1: GRÁFICO DE BARRAS POR UF COM RÓTULOS NO TOPO
-            # ----------------------------------------------------
-            st.markdown("### 🗺️ Volume de Aberturas por Estado (UF)")
-            df_uf_group = df_filtrado.groupby(['UF', 'ANO_ABERTURA']).size().reset_index(name='Quantidade de Aberturas')
-            df_uf_group['ANO_ABERTURA'] = df_uf_group['ANO_ABERTURA'].astype(str)
-            
-            fig_uf = px.bar(
-                df_uf_group, 
-                x='UF', 
-                y='Quantidade de Aberturas', 
-                color='ANO_ABERTURA',
-                title="Histórico de Expansão (Aberturas por Estado)",
-                labels={'UF': 'Estado', 'ANO_ABERTURA': 'Ano de Abertura'},
-                barmode='stack',
-                color_continuous_scale=px.colors.sequential.Blues,
-                text_auto=True # <--- ADICIONADO: Exibe os valores dentro/no topo das barras
-            )
-            fig_uf.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig_uf, use_container_width=True)
-
-            # ----------------------------------------------------
-            # GRÁFICO 2: GRÁFICO DE LINHA HISTÓRICA DE ANOS (SOLICITADO)
-            # ----------------------------------------------------
-            st.markdown("### 📉 Evolução Temporal de Aberturas (2020 - 2025)")
-            
-            # Agrupa para contar as lojas abertas por ano de forma consistente
-            df_ano_group = df_filtrado.groupby('ANO_ABERTURA').size().reset_index(name='Quantidade de Lojas')
-            
-            # Garante que todos os anos da análise apareçam na linha, mesmo se algum ano tiver zero aberturas filtradas
-            df_base_anos = pd.DataFrame({'ANO_ABERTURA': ano_selecionado})
-            df_ano_group = pd.merge(df_base_anos, df_ano_group, on='ANO_ABERTURA', how='left').fillna(0)
-            df_ano_group['Quantidade de Lojas'] = df_ano_group['Quantidade de Lojas'].astype(int)
-            df_ano_group = df_ano_group.sort_values('ANO_ABERTURA')
-            
-            # Cria o rótulo de texto personalizado solicitado: "X lojas"
-            df_ano_group['Rotulo'] = df_ano_group['Quantidade de Lojas'].apply(lambda x: f"{x} lojas")
-
-            fig_linha = px.line(
-                df_ano_group,
-                x='ANO_ABERTURA',
-                y='Quantidade de Lojas',
-                title="Evolução de Aberturas por Ano (Visão Crítica de Volume)",
-                labels={'ANO_ABERTURA': 'Ano de Abertura', 'Quantidade de Lojas': 'Lojas Abertas'},
-                markers=True, # Adiciona bolinhas nos pontos
-                text='Rotulo' # <--- ADICIONADO: Exibe o texto "100 lojas" em cima do ponto da linha
-            )
-            # Melhora o posicionamento do texto em cima do ponto e limpa o fundo gráfico
-            fig_linha.update_traces(textposition="top center", line=dict(color='#1E3A8A', width=3))
-            fig_linha.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)', 
-                paper_bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(tickmode='linear') # Força exibir cada ano um a um no eixo X
-            )
-            st.plotly_chart(fig_linha, use_container_width=True)
-
-            # Tabela Executiva Detalhada
-            st.markdown("### 📋 Listagem de Lojas da Janela de Expansão")
-            colunas_exibicao = ['ID_LOJA', 'LOJAS', 'UF', 'ANO_ABERTURA', 
-                                "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", "Aluguel ABRI'26", 
-                                'M² Salão Venda', "VENDA ABR'26", "DRE ABRI'26", 'TEM_ESTACIONAMENTO']
-            
-            colunas_existentes = [c for c in colunas_exibicao if c in df_filtrado.columns]
-            
-            st.dataframe(
-                df_filtrado[colunas_existentes].style.format({
-                    "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26": "R$ {:,.2f}",
-                    "Aluguel ABRI'26": "R$ {:,.2f}",
-                    "M² Salão Venda": "{:,.1f} m²",
-                    "VENDA ABR'26": "R$ {:,.2f}",
-                    "DRE ABRI'26": "{:,.2%}"
-                }, na_rep="N/A"), 
-                use_container_width=True
-            )
-    except Exception as e:
-        st.error(f"Erro inesperado ao processar o arquivo estrutural. Detalhes técnicos: {e}")
-else:
-    st.info("👋 Tudo pronto! Basta arrastar ou anexar o seu arquivo de lojas (`.csv` ou `.xlsx`) no campo à esquerda para carregar o painel da diretoria.")
