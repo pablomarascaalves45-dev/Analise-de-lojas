@@ -90,15 +90,18 @@ if arquivo_carregado is not None:
 
         total_lojas = int(df_lojas['ID_LOJA'].nunique()) if 'ID_LOJA' in df_lojas.columns else len(df_lojas)
         
+        med_fat_abr = df_lojas["VENDA ABR'26"].mean()
         med_aluguel = df_lojas["Aluguel ABRI'26"].mean()
         med_m2 = df_lojas["M² Salão Venda"].mean()
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total de Lojas", f"{total_lojas} PDVs")
         with col2:
-            st.metric("Aluguel Médio (Abril/26)", f"R$ {med_aluguel:,.2f}" if not pd.isna(med_aluguel) else "N/A")
+            st.metric("Fat. Médio (Abril/26)", f"R$ {med_fat_abr:,.2f}" if not pd.isna(med_fat_abr) else "N/A")
         with col3:
+            st.metric("Aluguel Médio (Abril/26)", f"R$ {med_aluguel:,.2f}" if not pd.isna(med_aluguel) else "N/A")
+        with col4:
             st.metric("Metragem Média (Salão)", f"{med_m2:,.1f} m²" if not pd.isna(med_m2) else "N/A")
 
         st.markdown("---")
@@ -115,17 +118,19 @@ if arquivo_carregado is not None:
 
         with col_com:
             st.subheader("✅ 2° Bloco: Lojas COM Estacionamento")
-            c1, c2, c3 = st.columns(3)
+            c1, c2, c3, c4 = st.columns(4)
             c1.metric("Qtd Lojas com Vagas", f"{len(df_com_vagas)} PDVs")
-            c2.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-            c3.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
+            c2.metric("Fat. Médio (Abril/26)", f"R$ {df_com_vagas['VENDA ABR\'26'].mean():,.2f}")
+            c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
+            c4.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
 
         with col_sem:
             st.subheader("❌ 3° Bloco: Lojas SEM Estacionamento")
-            s1, s2, s3 = st.columns(3)
+            s1, s2, s3, s4 = st.columns(4)
             s1.metric("Qtd Lojas sem Vagas", f"{len(df_sem_vagas)} PDVs")
-            s2.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-            s3.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
+            s2.metric("Fat. Médio (Abril/26)", f"R$ {df_sem_vagas['VENDA ABR\'26'].mean():,.2f}")
+            s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
+            s4.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
 
         st.markdown("---")
 
@@ -160,6 +165,7 @@ if arquivo_carregado is not None:
             st.warning("Selecione os Anos e Estados desejados na barra lateral.")
         else:
             safra_total_lojas = len(df_filtrado)
+            safra_med_fat_abr = df_filtrado["VENDA ABR'26"].mean()
             safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean()
             safra_med_m2 = df_filtrado["M² Salão Venda"].mean()
             
@@ -167,15 +173,16 @@ if arquivo_carregado is not None:
             safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
             safra_sem_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Não').sum()
 
-            m1, m2, m3 = st.columns(3)
+            m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total de Aberturas", f"{safra_total_lojas} PDVs")
-            m2.metric("Aluguel Médio (Safra)", f"R$ {safra_med_aluguel:,.2f}" if not pd.isna(safra_med_aluguel) else "N/A")
-            m3.metric("Metragem Média (Safra)", f"{safra_med_m2:,.1f} m²" if not pd.isna(safra_med_m2) else "N/A")
+            m2.metric("Fat. Médio (Safra Abr/26)", f"R$ {safra_med_fat_abr:,.2f}" if not pd.isna(safra_med_fat_abr) else "N/A")
+            m3.metric("Aluguel Médio (Safra)", f"R$ {safra_med_aluguel:,.2f}" if not pd.isna(safra_med_aluguel) else "N/A")
+            m4.metric("Metragem Média (Safra)", f"{safra_med_m2:,.1f} m²" if not pd.isna(safra_med_m2) else "N/A")
 
-            m4, m5, m6 = st.columns(3)
-            m4.metric("Lojas com DRE Negativo", f"{safra_negativas} PDVs", delta=f"{safra_negativas} operando no vermelho", delta_color="inverse")
-            m5.metric("Safra Com Vagas", f"{safra_com_vagas} PDVs")
-            m6.metric("Safra Sem Vagas", f"{safra_sem_vagas} PDVs")
+            m5, m6, m7 = st.columns(3)
+            m5.metric("Lojas com DRE Negativo", f"{safra_negativas} PDVs", delta=f"{safra_negativas} operando no vermelho", delta_color="inverse")
+            m6.metric("Safra Com Vagas", f"{safra_com_vagas} PDVs")
+            m7.metric("Safra Sem Vagas", f"{safra_sem_vagas} PDVs")
 
             # ----------------------------------------------------
             # GRÁFICO 1: GRÁFICO DE BARRAS POR UF COM RÓTULOS NO TOPO
