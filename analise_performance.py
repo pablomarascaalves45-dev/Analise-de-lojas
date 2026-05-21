@@ -1,10 +1,12 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
 import re
 
 # Configuração da página
-st.set_page_config(page_title="Dashboard de Performance", layout="wide")
+st.set_page_config(page_title="Dashboard de Performance", layout="wide", initial_sidebar_state="expanded")
 
 st.title("Laboratório de Performance de Lojas")
 
@@ -12,7 +14,7 @@ st.title("Laboratório de Performance de Lojas")
 st.sidebar.header("Upload de Arquivos")
 uploaded_file = st.sidebar.file_uploader("Upload do arquivo 'Teste de lojas.xlsx'", type=["xlsx"])
 
-# Novo input para receber os arquivos de safras / inaugurações passadas
+# Input para receber os arquivos de safras / inaugurações passadas
 uploaded_inauguracoes = st.sidebar.file_uploader(
     "Upload dos arquivos de Safras/Inaugurações (2021 a 2025)", 
     type=["xlsx", "csv"], 
@@ -24,9 +26,12 @@ def load_data(file):
     # Limpa espaços em branco nos nomes das colunas
     df.columns = [c.strip() for c in df.columns]
     
-    # --- CORREÇÃO DO ERRO DE SOMA ---
-    # Converte colunas financeiras para numérico, transformando erros (como "-") em 0
-    colunas_financeiras = ["VENDA MAR'26", "DRE FEV'26", "DRE_AC FEV'26", "MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"]
+    # --- TRATAMENTO E CONVERSÃO DE COLUNAS FINANCEIRAS CRUTIAIS ---
+    colunas_financeiras = [
+        "VENDA MAR'26", "DRE FEV'26", "DRE_AC FEV'26", 
+        "MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26", "INVESTIMENTO ACUMULADO",
+        "MARGEM CONTRIBUIÇÃO MAR'26", "EBITDA MAR'26", "LUCRO LÍQUIDO MAR'26"
+    ]
     for col in colunas_financeiras:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -44,7 +49,7 @@ def load_data(file):
         df["TICKET FSJ MAR'26"] = pd.to_numeric(df["TICKET FSJ MAR'26"], errors='coerce').fillna(0)
     
     # Preenchimento de nulos em colunas categóricas
-    colunas_texto = ["UF", "CIDADE", "MESORREGIÃO", "LOJAS", "TAMANHO DA CIDADE"]
+    colunas_texto = ["UF", "CIDADE", "MESORREGIÃO", "LOJAS", "TAMANHO DA CIDADE", "PERFIL CONSUMO", "SAFRA INAUGURAÇÃO"]
     for col in colunas_texto:
         if col in df.columns:
             df[col] = df[col].astype(str).replace('nan', 'Não Informado')
@@ -62,7 +67,7 @@ def processar_inauguracoes(arquivos):
             
         temp_df.columns = [c.strip() for c in temp_df.columns]
         
-        # Filtra linhas de 'Total' caso existam
+        # Filtra linhas de 'Total' ou vazias caso existam
         if 'Desc. Loja' in temp_df.columns:
             temp_df = temp_df[~temp_df['Desc. Loja'].astype(str).str.contains('Total|TOTAL', na=False)]
             temp_df = temp_df.dropna(subset=['Desc. Loja'])
@@ -79,13 +84,16 @@ def processar_inauguracoes(arquivos):
 if uploaded_file is not None:
     df = load_data(uploaded_file)
 
-    # Criação das Abas originais e uma nova aba para a Curva Histórica
+    # Criação das Abas Originais Expandidas
     tab_dashboard, tab_expansao, tab_curva_faturamento = st.tabs([
-        "Dashboard de Performance", 
-        "Relatório de Expansão", 
-        "Curva de Faturamento Histórica"
+        "📊 Dashboard de Performance", 
+        "🚀 Relatório de Expansão", 
+        "📈 Curva de Faturamento Histórica"
     ])
 
+    # ==========================================
+    # --- ABA 1: DASHBOARD DE PERFORMANCE ------
+    # ==========================================
     with tab_dashboard:
         st.sidebar.header("Filtros de Localização")
         estados_lista = sorted([x for x in df["UF"].unique() if x != 'Não Informado'])
@@ -109,28 +117,30 @@ if uploaded_file is not None:
         ]
 
         if not df_visualizacao.empty:
+            # Painel de Principais Indicadores (KPIs)
             m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
             
             venda_total = df_visualizacao["VENDA MAR'26"].sum()
             qtd_lojas_total = df_visualizacao["LOJAS"].nunique()
             media_dre = df_visualizacao["DRE FEV'26"].mean() * 100 
             media_dre_ac = df_visualizacao["DRE_AC FEV'26"].mean() * 100
-            
             ticket_medio = df_visualizacao["TICKET FSJ MAR'26"].mean()
             media_faturamento = df_visualizacao["MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26"].mean()
             media_populacao = df_visualizacao["POPULAÇÃO RAIO DE 1KM"].mean()
 
             m1.metric("Qtd de Lojas", f"{qtd_lojas_total}")
-            m2.metric("Venda Total", f"R$ {venda_total/1_000_000:.1f}M")
+            m2.metric("Venda Total", f"R$ {venda_total/1_000_000:.2f}M")
             m3.metric("Média DRE", f"{media_dre:.2f}%")
             m4.metric("DRE Acumulado", f"{media_dre_ac:.2f}%")
             m5.metric("Ticket Médio", f"R$ {ticket_medio:.2f}")
             m6.metric("Média Fat. Mensal", f"R$ {media_faturamento:,.0f}")
-            m7.metric("Média População", f"{int(media_populacao):,}")
+            m7.metric("Média População Raio", f"{int(media_populacao):,}")
 
             st.divider()
-            st.subheader("Eficiência e Hierarquia")
-            foco_porte = st.selectbox("Filtrar detalhamento por Porte:", 
+            
+            # Gráficos Avançados de Performance Coletiva
+            st.subheader("Análise de Eficiência e Hierarquia Operacional")
+            foco_porte = st.selectbox("Filtrar detalhamento por Porte da Cidade:", 
                                      ["Ver Todos"] + sorted(list(df_visualizacao["TAMANHO DA CIDADE"].unique())))
             
             col_v1, col_v2 = st.columns(2)
@@ -138,35 +148,57 @@ if uploaded_file is not None:
                 df_porte_med = df_visualizacao.groupby(["MESORREGIÃO", "TAMANHO DA CIDADE"])["VENDA MAR'26"].mean().reset_index()
                 fig_porte_med = px.bar(
                     df_porte_med, x="MESORREGIÃO", y="VENDA MAR'26", color="TAMANHO DA CIDADE",
-                    title="Faturamento Médio: Região vs Porte", barmode="group",
+                    title="Faturamento Médio Comercial: Região vs Porte da Cidade", barmode="group",
                     color_discrete_sequence=px.colors.qualitative.Prism,
-                    labels={"VENDA MAR'26": "Média (R$)"}
+                    labels={"VENDA MAR'26": "Média Faturamento (R$)", "MESORREGIÃO": "Mesorregião"}
                 )
+                fig_porte_med.update_layout(yaxis_tickprefix="R$ ", yaxis_tickformat=",.")
                 st.plotly_chart(fig_porte_med, use_container_width=True)
 
             with col_v2:
                 fig_tree_med = px.treemap(
                     df_visualizacao, path=["MESORREGIÃO", "TAMANHO DA CIDADE", "CIDADE"], 
                     values="VENDA MAR'26", color="DRE FEV'26", color_continuous_scale="RdYlGn",
-                    title="Hierarquia de Lojas e Rentabilidade"
+                    title="Estrutura Hierárquica de Lojas e Rentabilidade Base"
                 )
                 st.plotly_chart(fig_tree_med, use_container_width=True)
 
+            # Nova Seção de Correlação Dispersiva Avançada
+            st.subheader("Correlação Dinâmica: Faturamento vs Variáveis Demográficas")
+            col_scat1, col_scat2 = st.columns([1, 3])
+            with col_scat1:
+                eixo_x_selecionado = st.selectbox("Selecione a Métrica do Eixo X:", 
+                                                  ["POPULAÇÃO RAIO DE 1KM", "INVESTIMENTO ACUMULADO", "TICKET FSJ MAR'26"])
+            with col_scat2:
+                fig_scatter = px.scatter(
+                    df_visualizacao, x=eixo_x_selecionado, y="VENDA MAR'26", 
+                    color="TAMANHO DA CIDADE", size="LOJAS" if "LOJAS" in df_visualizacao.columns else None,
+                    hover_name="CIDADE", title=f"Dispersão Avançada: VENDA MAR'26 por {eixo_x_selecionado}",
+                    trendline="ols", color_discrete_sequence=px.colors.qualitative.Bold
+                )
+                fig_scatter.update_layout(yaxis_tickprefix="R$ ", yaxis_tickformat=",.")
+                st.plotly_chart(fig_scatter, use_container_width=True)
+
+            # Tabela Dinâmica Detalhada
             df_tabela_final = df_visualizacao if foco_porte == "Ver Todos" else df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
-            st.subheader(f"Dados Detalhados: {foco_porte}")
+            st.subheader(f"Dados Consolidados Detalhados: {foco_porte}")
             st.dataframe(df_tabela_final, use_container_width=True)
         else:
-            st.warning("Nenhum dado encontrado para os filtros selecionados.")
+            st.warning("Nenhum registro correspondente aos filtros foi localizado na base.")
 
-    # --- ABA 2: EXPANSÃO ---
+    # ==========================================
+    # --- ABA 2: RELATÓRIO DE EXPANSÃO ---------
+    # ==========================================
     with tab_expansao:
-        st.header("Análise Estratégica para Expansão")
+        st.header("Análise Estratégica e Matriz de Oportunidade para Expansão")
+        
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            fat_min = st.slider("Faturamento Mínimo Desejado (R$):", 0, 1500000, 500000, step=50000)
+            fat_min = st.slider("Clas. Sucesso - Faturamento Mínimo Desejado (R$):", 0, 1500000, 500000, step=50000)
         with col_c2:
-            dre_min = st.slider("Rentabilidade DRE Mínima (%):", -20.0, 40.0, 0.0, step=0.5) / 100
+            dre_min = st.slider("Clas. Sucesso - Rentabilidade DRE Mínima (%):", -20.0, 40.0, 0.0, step=0.5) / 100
 
+        # Regra de Filtragem Avançada das Lojas Modelo (Benchmark de Sucesso)
         df_sucesso = df[(df["VENDA MAR'26"] > fat_min) & (df["DRE FEV'26"] > dre_min)].copy()
 
         if not df_sucesso.empty:
@@ -181,33 +213,45 @@ if uploaded_file is not None:
 
             fig_exp = px.bar(
                 df_analise, x="Estado", y="Faturamento Médio", color="Porte da Cidade",
-                title="Performance Média por Estado (Amostragem no Topo)", barmode="group",
-                text="label_topo", labels={"Faturamento Médio": "Faturamento Médio (R$)", "Estado": "", "Porte da Cidade": ""}
+                title="Performance Média por Estado e Regiões Promissoras (Amostragem no Topo)", barmode="group",
+                text="label_topo", labels={"Faturamento Médio": "Faturamento Médio (R$)"}
             )
             
-            fig_exp.update_traces(textposition='outside', textfont=dict(size=14, color="black"), cliponaxis=False)
-            fig_exp.update_layout(xaxis_title=None, yaxis_tickprefix="R$ ", yaxis_tickformat=",.",
-                                  legend=dict(title=None, orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5))
+            fig_exp.update_traces(textposition='outside', textfont=dict(size=13, color="black"), cliponaxis=False)
+            fig_exp.update_layout(xaxis_title="Estados Analisados", yaxis_tickprefix="R$ ", yaxis_tickformat=",.",
+                                  legend=dict(title="Porte de Cidades", orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5))
             
             st.plotly_chart(fig_exp, use_container_width=True)
+            
+            # Adição do Gráfico de Quadrantes Estratégicos (Potencial vs Retorno)
+            st.subheader("Matriz de Posicionamento Estratégico Regional")
+            fig_quadrantes = px.scatter(
+                df_analise, x="Margem DRE Média", y="Faturamento Médio", color="Porte da Cidade",
+                text="Estado", size="Qtd Lojas", title="Mapeamento de Quadrantes (Tamanho da Bolha = Volumetria de Lojas)"
+            )
+            fig_quadrantes.add_hline(y=df_analise["Faturamento Médio"].mean(), line_dash="dash", line_color="gray", annotation_text="Faturamento Médio")
+            fig_quadrantes.add_vline(x=df_analise["Margem DRE Média"].mean(), line_dash="dash", line_color="gray", annotation_text="DRE Médio")
+            st.plotly_chart(fig_quadrantes, use_container_width=True)
             
             st.subheader("Matriz de Oportunidade Detalhada")
             st.dataframe(df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False]), use_container_width=True)
         else:
-            st.error("Nenhum dado atende aos critérios selecionados.")
+            st.error("Não há registros que atinjam os parâmetros mínimos de Faturamento e DRE configurados acima.")
 
-    # --- NOVA ABA 3: CURVA DE FATURAMENTO HISTÓRICA (SAFRAS) ---
+    # ==========================================
+    # --- ABA 3: CURVA HISTÓRICA (SAFRAS) ------
+    # ==========================================
     with tab_curva_faturamento:
-        st.header("Análise de Curva de Faturamento com o Passar dos Anos")
+        st.header("Análise de Curva de Faturamento Coletiva por Safras")
         
         if uploaded_inauguracoes:
             df_inauguracoes = processar_inauguracoes(uploaded_inauguracoes)
             
             if not df_inauguracoes.empty:
-                # Mapeia colunas no formato 'Vendas MM/AAAA'
+                # Mapeia dinamicamente colunas no formato 'Vendas MM/AAAA'
                 col_vendas = [c for c in df_inauguracoes.columns if re.match(r'Vendas\s+\d{2}/\d{4}', c)]
                 
-                # Conversão das colunas de vendas mapeadas para valores numéricos limpos
+                # Conversão das colunas de vendas para valores numéricos limpos
                 for col in col_vendas:
                     df_inauguracoes[col] = pd.to_numeric(df_inauguracoes[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
                 
@@ -224,118 +268,4 @@ if uploaded_file is not None:
                 
                 with c_filtro1:
                     ufs_disponiveis = sorted(list(df_inauguracoes["UF"].unique()))
-                    uf_selecionada = st.selectbox("Selecione o Estado para Análise de Curva Média:", ["Todos"] + ufs_disponiveis)
-                    
-                with c_filtro2:
-                    # Filtra a listagem de lojas pelo estado previamente selecionado para facilitar a busca
-                    if uf_selecionada != "Todos":
-                        lojas_disponiveis = sorted(list(df_inauguracoes[df_inauguracoes["UF"] == uf_selecionada]["Desc. Loja"].unique()))
-                    else:
-                        lojas_disponiveis = sorted(list(df_inauguracoes["Desc. Loja"].unique()))
-                    loja_selecionada = st.selectbox("Selecione uma Loja Específica para detalhar:", ["Desconsiderar Loja (Apenas Estado)"] + lojas_disponiveis)
-
-                # --- PROCESSAMENTO DOS DADOS PARA O GRÁFICO (MELT) ---
-                # Extrai a evolução cronológica pura do faturamento
-                df_melted = df_inauguracoes.melt(
-                    id_vars=["Desc. Loja", "UF"], 
-                    value_vars=col_vendas, 
-                    var_name="Periodo", 
-                    value_name="Faturamento"
-                )
-                # Limpa a string "Vendas " para ordenar por data real no eixo X
-                df_melted["Data_Eixo"] = df_melted["Periodo"].str.replace(r'Vendas\s+', '', regex=True)
-                df_melted["Data_Eixo"] = pd.to_datetime(df_melted["Data_Eixo"], format='%m/%Y', errors='coerce')
-                
-                # --- CORREÇÃO DA ORDENAÇÃO CRONOLÓGICA DAS DATAS ---
-                df_melted = df_melted.sort_values("Data_Eixo").reset_index(drop=True)
-                df_melted["Mês/Ano"] = df_melted["Data_Eixo"].dt.strftime('%m/%Y')
-
-                # Geração de visões baseadas nos filtros (Mantendo a ordenação cronológica via Data_Eixo)
-                if uf_selecionada != "Todos":
-                    df_estado_curva = df_melted[df_melted["UF"] == uf_selecionada].groupby(["Data_Eixo", "Mês/Ano"], sort=True)["Faturamento"].mean().reset_index()
-                    label_estado = f"Média do Estado ({uf_selecionada})"
-                else:
-                    df_estado_curva = df_melted.groupby(["Data_Eixo", "Mês/Ano"], sort=True)["Faturamento"].mean().reset_index()
-                    label_estado = "Média Geral de Todos Estados"
-
-                df_estado_curva["Tipo"] = label_estado
-
-                # Ajuste para evitar NameError definindo df_loja_especifica de forma segura
-                if loja_selecionada != "Desconsiderar Loja (Apenas Estado)":
-                    df_loja_especifica = df_melted[df_melted["Desc. Loja"] == loja_selecionada].sort_values("Data_Eixo").reset_index(drop=True)
-                    titulo_grafico = f"Evolução Temporal: Loja {loja_selecionada} vs {label_estado}"
-                    
-                    df_loja_especifica_plot = df_loja_especifica[["Mês/Ano", "Faturamento"]].copy()
-                    df_loja_especifica_plot["Tipo"] = f"Loja: {loja_selecionada}"
-                    df_plot_final = pd.concat([df_loja_especifica_plot, df_estado_curva[["Mês/Ano", "Faturamento", "Tipo"]]], ignore_index=True)
-                else:
-                    df_loja_especifica = pd.DataFrame()
-                    titulo_grafico = f"Evolução Temporal: {label_estado}"
-                    df_plot_final = df_estado_curva[["Mês/Ano", "Faturamento", "Tipo"]]
-
-                fig_curva = px.line(
-                    df_plot_final, x="Mês/Ano", y="Faturamento", color="Tipo",
-                    title=titulo_grafico, markers=True,
-                    labels={"Faturamento": "Faturamento (R$)", "Mês/Ano": "Período Analisado"}
-                )
-                fig_curva.update_layout(yaxis_tickprefix="R$ ", yaxis_tickformat=",.")
-                # Garante que o Plotly respeite a nossa ordem cronológica do dataframe
-                fig_curva.update_xaxes(type='category')
-                st.plotly_chart(fig_curva, use_container_width=True)
-
-                # --- CÁLCULO DE MÉTRICA DE TEMPO ATÉ ATINGIR 500K ---
-                st.divider()
-                st.subheader("Tempo de Maturação (Rampa de Faturamento > R$ 500k)")
-                
-                # Se uma loja específica estiver selecionada, renderiza duas colunas normalmente
-                if loja_selecionada != "Desconsiderar Loja (Apenas Estado)":
-                    col_m1, col_m2 = st.columns(2)
-                    
-                    with col_m1:
-                        # Regra corrigida para a Loja Selecionada
-                        df_loja_cronologico = df_loja_especifica[df_loja_especifica["Faturamento"] > 0].sort_values("Data_Eixo").reset_index(drop=True)
-                        meses_ate_500k_loja = "Não atingiu faturamento > 500k no período"
-                        
-                        contador = 1
-                        for index, row in df_loja_cronologico.iterrows():
-                            if row["Faturamento"] >= 500000:
-                                meses_ate_500k_loja = f"{contador} mês(es) após início do histórico registrado"
-                                break
-                            contador += 1
-                            
-                        st.metric(label=f"Tempo para a loja '{loja_selecionada}' faturar > 500k", value=meses_ate_500k_loja)
-
-                    with col_m2:
-                        # Regra corrigida para o Estado Selecionado (Média)
-                        df_uf_cronologico_limpo = df_estado_curva[df_estado_curva["Faturamento"] > 0].sort_values("Data_Eixo").reset_index(drop=True)
-                        meses_ate_500k_uf = "Média do Estado não atingiu > 500k"
-                        
-                        contador_uf = 1
-                        for index, row in df_uf_cronologico_limpo.iterrows():
-                            if row["Faturamento"] >= 500000:
-                                meses_ate_500k_uf = f"Em média {contador_uf} mês(es)"
-                                break
-                            contador_uf += 1
-                            
-                        st.metric(label=f"Tempo médio do Estado ({uf_selecionada}) para faturar > 500k", value=meses_ate_500k_uf)
-                else:
-                    # Se não houver loja selecionada, exibe apenas a métrica regional consolidada em largura total
-                    df_uf_cronologico_limpo = df_estado_curva[df_estado_curva["Faturamento"] > 0].sort_values("Data_Eixo").reset_index(drop=True)
-                    meses_ate_500k_uf = "Média regional não atingiu > 500k"
-                    
-                    contador_uf = 1
-                    for index, row in df_uf_cronologico_limpo.iterrows():
-                        if row["Faturamento"] >= 500000:
-                            meses_ate_500k_uf = f"Em média {contador_uf} mês(es)"
-                            break
-                        contador_uf += 1
-                        
-                    st.metric(label=f"Tempo médio regional ({uf_selecionada}) para faturar > 500k (Visão Consolidada)", value=meses_ate_500k_uf)
-
-            else:
-                st.error("Não foi possível processar os dados das planilhas de safras anexadas.")
-        else:
-            st.info("💡 Para visualizar as curvas de faturamento dos anos passados e o indicador de 500k, realize o upload de um ou mais arquivos de 'Inaugurações' na barra lateral.")
-
-else:
-    st.info("Por favor, faça o upload do arquivo Excel principal na barra lateral para começar.")
+                    uf_selecionada =
