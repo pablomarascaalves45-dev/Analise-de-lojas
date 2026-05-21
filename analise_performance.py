@@ -50,15 +50,13 @@ def tratar_dados(df):
     
     for col in colunas_numericas:
         if col in df.columns:
-            # CORREÇÃO DEFINITIVA GLOBAL PARA O PADRÃO PT-BR (Garante a conversão linha por linha)
+            # AJUSTE SEGURO: Só faz substituição de texto se a coluna não tiver sido lida como número puro
             if df[col].dtype == 'object':
                 df[col] = df[col].astype(str).str.strip()
                 df[col] = df[col].str.replace('R$', '', regex=False).str.strip()
-                
-                # Substitui primeiro o ponto de milhar por vazio, e depois a vírgula decimal por ponto americano
                 df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
             
-            # Converte para número puro do Python (Float) de forma segura
+            # Converte para float puro (ignora NaNs para não quebrar a média matemática)
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
     if 'DATA DE ABERTURA' in df.columns:
@@ -93,6 +91,8 @@ if arquivo_carregado is not None:
         st.header("🏢 1° Bloco: Panorama Geral da Rede")
 
         total_lojas = int(df_lojas['ID_LOJA'].nunique()) if 'ID_LOJA' in df_lojas.columns else len(df_lojas)
+        
+        # CALCULO CORRETO: Aplica a média matemática na coluna real de 12 meses
         med_fat = df_lojas["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
         med_aluguel = df_lojas["Aluguel ABRI'26"].mean()
         med_m2 = df_lojas["M² Salão Venda"].mean()
