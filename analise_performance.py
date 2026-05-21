@@ -132,19 +132,21 @@ if arquivo_carregado is not None:
         col_com, col_sem = st.columns(2)
         with col_com:
             st.subheader("✅ 2° Bloco: Lojas COM Estacionamento")
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Qtd Lojas com Vagas", f"{len(df_com_vagas)} PDVs")
             c2.metric("Fat. Médio (Abril/26)", f"R$ {df_com_vagas['VENDA ABR\'26'].mean():,.2f}")
-            c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-            c4.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
+            c3.metric("Produtividade Média", f"R$ {df_com_vagas['Produdividade m²'].mean():,.2f}")
+            c4.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
+            c5.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
 
         with col_sem:
             st.subheader("❌ 3° Bloco: Lojas SEM Estacionamento")
-            s1, s2, s3, s4 = st.columns(4)
+            s1, s2, s3, s4, s5 = st.columns(5)
             s1.metric("Qtd Lojas sem Vagas", f"{len(df_sem_vagas)} PDVs")
             s2.metric("Fat. Médio (Abril/26)", f"R$ {df_sem_vagas['VENDA ABR\'26'].mean():,.2f}")
-            s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-            s4.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
+            s3.metric("Produtividade Média", f"R$ {df_sem_vagas['Produdividade m²'].mean():,.2f}")
+            s4.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
+            s5.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
 
         st.markdown("---")
 
@@ -295,7 +297,7 @@ if arquivo_carregado is not None:
             st.markdown("### 📋 Listagem de Lojas da Janela de Expansão")
             colunas_exibicao = ['ID_LOJA', 'LOJAS', 'UF', 'ANO_ABERTURA', 
                                 "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", "Aluguel ABRI'26", 
-                                'M² Salão Venda', "VENDA ABR'26", "DRE ABRI'26", 'TEM_ESTACIONAMENTO']
+                                'M² Salão Venda', "VENDA ABR'26", "DRE ABRI'26", 'TEM_ESTACIONAMENTO', 'Produdividade m²']
             colunas_existentes = [c for c in colunas_exibicao if c in df_filtrado.columns]
             st.dataframe(
                 df_filtrado[colunas_existentes].style.format({
@@ -303,7 +305,8 @@ if arquivo_carregado is not None:
                     "Aluguel ABRI'26": "R$ {:,.2f}",
                     "M² Salão Venda": "{:,.1f} m²",
                     "VENDA ABR'26": "R$ {:,.2f}",
-                    "DRE ABRI'26": "{:,.2%}"
+                    "DRE ABRI'26": "{:,.2%}",
+                    "Produdividade m²": "R$ {:,.2f}"
                 }, na_rep="N/A"), 
                 use_container_width=True
             )
