@@ -26,7 +26,7 @@ def load_data(file):
     # Limpa espaços em branco nos nomes das colunas
     df.columns = [c.strip() for c in df.columns]
     
-    # --- TRATAMENTO E CONVERSÃO DE COLUNAS FINANCEIRAS CRUTIAIS ---
+    # --- TRATAMENTO E CONVERSÃO DE COLUNAS FINANCEIRAS CRUCIAIS ---
     colunas_financeiras = [
         "VENDA MAR'26", "DRE FEV'26", "DRE_AC FEV'26", 
         "MÉDIA FATURAMENTO DE ABR'25 ATÉ MAR'26", "INVESTIMENTO ACUMULADO",
@@ -164,108 +164,4 @@ if uploaded_file is not None:
                 st.plotly_chart(fig_tree_med, use_container_width=True)
 
             # Nova Seção de Correlação Dispersiva Avançada
-            st.subheader("Correlação Dinâmica: Faturamento vs Variáveis Demográficas")
-            col_scat1, col_scat2 = st.columns([1, 3])
-            with col_scat1:
-                eixo_x_selecionado = st.selectbox("Selecione a Métrica do Eixo X:", 
-                                                  ["POPULAÇÃO RAIO DE 1KM", "INVESTIMENTO ACUMULADO", "TICKET FSJ MAR'26"])
-            with col_scat2:
-                fig_scatter = px.scatter(
-                    df_visualizacao, x=eixo_x_selecionado, y="VENDA MAR'26", 
-                    color="TAMANHO DA CIDADE", size="LOJAS" if "LOJAS" in df_visualizacao.columns else None,
-                    hover_name="CIDADE", title=f"Dispersão Avançada: VENDA MAR'26 por {eixo_x_selecionado}",
-                    trendline="ols", color_discrete_sequence=px.colors.qualitative.Bold
-                )
-                fig_scatter.update_layout(yaxis_tickprefix="R$ ", yaxis_tickformat=",.")
-                st.plotly_chart(fig_scatter, use_container_width=True)
-
-            # Tabela Dinâmica Detalhada
-            df_tabela_final = df_visualizacao if foco_porte == "Ver Todos" else df_visualizacao[df_visualizacao["TAMANHO DA CIDADE"] == foco_porte]
-            st.subheader(f"Dados Consolidados Detalhados: {foco_porte}")
-            st.dataframe(df_tabela_final, use_container_width=True)
-        else:
-            st.warning("Nenhum registro correspondente aos filtros foi localizado na base.")
-
-    # ==========================================
-    # --- ABA 2: RELATÓRIO DE EXPANSÃO ---------
-    # ==========================================
-    with tab_expansao:
-        st.header("Análise Estratégica e Matriz de Oportunidade para Expansão")
-        
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            fat_min = st.slider("Clas. Sucesso - Faturamento Mínimo Desejado (R$):", 0, 1500000, 500000, step=50000)
-        with col_c2:
-            dre_min = st.slider("Clas. Sucesso - Rentabilidade DRE Mínima (%):", -20.0, 40.0, 0.0, step=0.5) / 100
-
-        # Regra de Filtragem Avançada das Lojas Modelo (Benchmark de Sucesso)
-        df_sucesso = df[(df["VENDA MAR'26"] > fat_min) & (df["DRE FEV'26"] > dre_min)].copy()
-
-        if not df_sucesso.empty:
-            df_analise = df_sucesso.groupby(["UF", "TAMANHO DA CIDADE"]).agg({
-                "VENDA MAR'26": "mean",
-                "DRE FEV'26": "mean",
-                "LOJAS": "count"
-            }).reset_index()
-
-            df_analise.columns = ["Estado", "Porte da Cidade", "Faturamento Médio", "Margem DRE Média", "Qtd Lojas"]
-            df_analise["label_topo"] = df_analise["Qtd Lojas"].astype(str) + " Lojas"
-
-            fig_exp = px.bar(
-                df_analise, x="Estado", y="Faturamento Médio", color="Porte da Cidade",
-                title="Performance Média por Estado e Regiões Promissoras (Amostragem no Topo)", barmode="group",
-                text="label_topo", labels={"Faturamento Médio": "Faturamento Médio (R$)"}
-            )
-            
-            fig_exp.update_traces(textposition='outside', textfont=dict(size=13, color="black"), cliponaxis=False)
-            fig_exp.update_layout(xaxis_title="Estados Analisados", yaxis_tickprefix="R$ ", yaxis_tickformat=",.",
-                                  legend=dict(title="Porte de Cidades", orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5))
-            
-            st.plotly_chart(fig_exp, use_container_width=True)
-            
-            # Adição do Gráfico de Quadrantes Estratégicos (Potencial vs Retorno)
-            st.subheader("Matriz de Posicionamento Estratégico Regional")
-            fig_quadrantes = px.scatter(
-                df_analise, x="Margem DRE Média", y="Faturamento Médio", color="Porte da Cidade",
-                text="Estado", size="Qtd Lojas", title="Mapeamento de Quadrantes (Tamanho da Bolha = Volumetria de Lojas)"
-            )
-            fig_quadrantes.add_hline(y=df_analise["Faturamento Médio"].mean(), line_dash="dash", line_color="gray", annotation_text="Faturamento Médio")
-            fig_quadrantes.add_vline(x=df_analise["Margem DRE Média"].mean(), line_dash="dash", line_color="gray", annotation_text="DRE Médio")
-            st.plotly_chart(fig_quadrantes, use_container_width=True)
-            
-            st.subheader("Matriz de Oportunidade Detalhada")
-            st.dataframe(df_analise.sort_values(by=["Estado", "Faturamento Médio"], ascending=[True, False]), use_container_width=True)
-        else:
-            st.error("Não há registros que atinjam os parâmetros mínimos de Faturamento e DRE configurados acima.")
-
-    # ==========================================
-    # --- ABA 3: CURVA HISTÓRICA (SAFRAS) ------
-    # ==========================================
-    with tab_curva_faturamento:
-        st.header("Análise de Curva de Faturamento Coletiva por Safras")
-        
-        if uploaded_inauguracoes:
-            df_inauguracoes = processar_inauguracoes(uploaded_inauguracoes)
-            
-            if not df_inauguracoes.empty:
-                # Mapeia dinamicamente colunas no formato 'Vendas MM/AAAA'
-                col_vendas = [c for c in df_inauguracoes.columns if re.match(r'Vendas\s+\d{2}/\d{4}', c)]
-                
-                # Conversão das colunas de vendas para valores numéricos limpos
-                for col in col_vendas:
-                    df_inauguracoes[col] = pd.to_numeric(df_inauguracoes[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
-                
-                # Procura associar o Estado (UF) às lojas baseado no primeiro arquivo (df principal)
-                if "Desc. Loja" in df_inauguracoes.columns and "LOJAS" in df.columns and "UF" in df.columns:
-                    depara_uf = df.set_index("LOJAS")["UF"].to_dict()
-                    df_inauguracoes["UF"] = df_inauguracoes["Desc. Loja"].map(depara_uf).fillna("Não Informado")
-                elif "UF" not in df_inauguracoes.columns:
-                    df_inauguracoes["UF"] = "Não Informado"
-
-                # --- FILTROS DE VISUALIZAÇÃO DA CURVA ---
-                st.subheader("Configurações do Gráfico Dinâmico")
-                c_filtro1, c_filtro2 = st.columns(2)
-                
-                with c_filtro1:
-                    ufs_disponiveis = sorted(list(df_inauguracoes["UF"].unique()))
-                    uf_selecionada =
+            st.subheader("Correlação Dinâmica: Faturamento vs Vari
