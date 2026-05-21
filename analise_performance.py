@@ -245,31 +245,33 @@ if uploaded_file is not None:
                 # Limpa a string "Vendas " para ordenar por data real no eixo X
                 df_melted["Data_Eixo"] = df_melted["Periodo"].str.replace(r'Vendas\s+', '', regex=True)
                 df_melted["Data_Eixo"] = pd.to_datetime(df_melted["Data_Eixo"], format='%m/%Y', errors='coerce')
-                df_melted = df_melted.sort_values("Data_Eixo")
+                
+                # --- CORREÇÃO DA ORDENAÇÃO CRONOLÓGICA DAS DATAS ---
+                df_melted = df_melted.sort_values("Data_Eixo").reset_index(drop=True)
                 df_melted["Mês/Ano"] = df_melted["Data_Eixo"].dt.strftime('%m/%Y')
 
-                # Geração de visões baseadas nos filtros
+                # Geração de visões baseadas nos filtros (Mantendo a ordenação cronológica via Data_Eixo)
                 if uf_selecionada != "Todos":
-                    df_estado_curva = df_melted[df_melted["UF"] == uf_selecionada].groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
+                    df_estado_curva = df_melted[df_melted["UF"] == uf_selecionada].groupby(["Data_Eixo", "Mês/Ano"], sort=True)["Faturamento"].mean().reset_index()
                     label_estado = f"Média do Estado ({uf_selecionada})"
                 else:
-                    df_estado_curva = df_melted.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
+                    df_estado_curva = df_melted.groupby(["Data_Eixo", "Mês/Ano"], sort=True)["Faturamento"].mean().reset_index()
                     label_estado = "Média Geral de Todos Estados"
 
                 df_estado_curva["Tipo"] = label_estado
 
                 # Ajuste para evitar NameError definindo df_loja_especifica de forma segura
                 if loja_selecionada != "Desconsiderar Loja (Apenas Estado)":
-                    df_loja_especifica = df_melted[df_melted["Desc. Loja"] == loja_selecionada]
+                    df_loja_especifica = df_melted[df_melted["Desc. Loja"] == loja_selecionada].sort_values("Data_Eixo").reset_index(drop=True)
                     titulo_grafico = f"Evolução Temporal: Loja {loja_selecionada} vs {label_estado}"
                     
                     df_loja_especifica_plot = df_loja_especifica[["Mês/Ano", "Faturamento"]].copy()
                     df_loja_especifica_plot["Tipo"] = f"Loja: {loja_selecionada}"
-                    df_plot_final = pd.concat([df_loja_especifica_plot, df_estado_curva], ignore_index=True)
+                    df_plot_final = pd.concat([df_loja_especifica_plot, df_estado_curva[["Mês/Ano", "Faturamento", "Tipo"]]], ignore_index=True)
                 else:
                     df_loja_especifica = pd.DataFrame()
                     titulo_grafico = f"Evolução Temporal: {label_estado}"
-                    df_plot_final = df_estado_curva
+                    df_plot_final = df_estado_curva[["Mês/Ano", "Faturamento", "Tipo"]]
 
                 fig_curva = px.line(
                     df_plot_final, x="Mês/Ano", y="Faturamento", color="Tipo",
@@ -277,6 +279,8 @@ if uploaded_file is not None:
                     labels={"Faturamento": "Faturamento (R$)", "Mês/Ano": "Período Analisado"}
                 )
                 fig_curva.update_layout(yaxis_tickprefix="R$ ", yaxis_tickformat=",.")
+                # Garante que o Plotly respeite a nossa ordem cronológica do dataframe
+                fig_curva.update_xaxes(type='category')
                 st.plotly_chart(fig_curva, use_container_width=True)
 
                 # --- CÁLCULO DE MÉTRICA DE TEMPO ATÉ ATINGIR 500K ---
@@ -288,7 +292,8 @@ if uploaded_file is not None:
                     col_m1, col_m2 = st.columns(2)
                     
                     with col_m1:
-                        df_loja_cronologico = df_loja_especifica.dropna(subset=["Faturamento"]).reset_index()
+                        # Regra corrigida para a Loja Selecionada
+                        df_loja_cronologico = df_loja_especifica[df_loja_especifica["Faturamento"] > 0].sort_values("Data_Eixo").reset_index(drop=True)
                         meses_ate_500k_loja = "Não atingiu faturamento > 500k no período"
                         
                         contador = 1
@@ -301,12 +306,12 @@ if uploaded_file is not None:
                         st.metric(label=f"Tempo para a loja '{loja_selecionada}' faturar > 500k", value=meses_ate_500k_loja)
 
                     with col_m2:
-                        df_uf_contexto = df_melted if uf_selecionada == "Todos" else df_melted[df_melted["UF"] == uf_selecionada]
-                        df_uf_cronologico = df_uf_contexto.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
+                        # Regra corrigida para o Estado Selecionado (Média)
+                        df_uf_cronologico_limpo = df_estado_curva[df_estado_curva["Faturamento"] > 0].sort_values("Data_Eixo").reset_index(drop=True)
                         meses_ate_500k_uf = "Média do Estado não atingiu > 500k"
                         
                         contador_uf = 1
-                        for index, row in df_uf_cronologico.iterrows():
+                        for index, row in df_uf_cronologico_limpo.iterrows():
                             if row["Faturamento"] >= 500000:
                                 meses_ate_500k_uf = f"Em média {contador_uf} mês(es)"
                                 break
@@ -315,12 +320,11 @@ if uploaded_file is not None:
                         st.metric(label=f"Tempo médio do Estado ({uf_selecionada}) para faturar > 500k", value=meses_ate_500k_uf)
                 else:
                     # Se não houver loja selecionada, exibe apenas a métrica regional consolidada em largura total
-                    df_uf_context = df_melted if uf_selecionada == "Todos" else df_melted[df_melted["UF"] == uf_selecionada]
-                    df_uf_cronologico = df_uf_context.groupby("Mês/Ano", sort=False)["Faturamento"].mean().reset_index()
+                    df_uf_cronologico_limpo = df_estado_curva[df_estado_curva["Faturamento"] > 0].sort_values("Data_Eixo").reset_index(drop=True)
                     meses_ate_500k_uf = "Média regional não atingiu > 500k"
                     
                     contador_uf = 1
-                    for index, row in df_uf_cronologico.iterrows():
+                    for index, row in df_uf_cronologico_limpo.iterrows():
                         if row["Faturamento"] >= 500000:
                             meses_ate_500k_uf = f"Em média {contador_uf} mês(es)"
                             break
