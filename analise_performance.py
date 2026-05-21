@@ -192,17 +192,56 @@ if arquivo_carregado is not None:
                 </div>
                 """, unsafe_allow_html=True)
 
-            # Gráficos...
+            # ----------------------------------------------------
+            # GRÁFICO 1: GRÁFICO DE BARRAS POR UF COM RÓTULOS NO TOPO
+            # ----------------------------------------------------
             st.markdown("### 🗺️ Volume de Aberturas por Estado (UF)")
             df_uf_group = df_filtrado.groupby(['UF', 'ANO_ABERTURA']).size().reset_index(name='Quantidade de Aberturas')
             df_uf_group['ANO_ABERTURA'] = df_uf_group['ANO_ABERTURA'].astype(str)
             fig_uf = px.bar(df_uf_group, x='UF', y='Quantidade de Aberturas', color='ANO_ABERTURA', barmode='stack', text_auto=True)
+            
+            # AJUSTE PONTUAL: Força o tamanho da fonte para 16px e impede o corte automático de textos menores
+            fig_uf.update_traces(textfont_size=16, textposition='inside')
+            fig_uf.update_layout(
+                uniformtext=dict(mode='hide', minsize=14),
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
             st.plotly_chart(fig_uf, use_container_width=True)
 
+            # ----------------------------------------------------
+            # GRÁFICO 2: GRÁFICO DE LINHA HISTÓRICA DE ANOS
+            # ----------------------------------------------------
             st.markdown("### 📉 Evolução Temporal de Aberturas")
             df_ano_group = df_filtrado.groupby('ANO_ABERTURA').size().reset_index(name='Quantidade de Lojas')
-            fig_linha = px.line(df_ano_group, x='ANO_ABERTURA', y='Quantidade de Lojas', markers=True, text='Quantidade de Lojas')
+            df_ano_group['Rotulo'] = df_ano_group['Quantidade de Lojas'].apply(lambda x: f"{x} lojas")
+            fig_linha = px.line(df_ano_group, x='ANO_ABERTURA', y='Quantidade de Lojas', markers=True, text='Rotulo')
+            
+            # AJUSTE PONTUAL: Aumenta o rótulo do gráfico de linha para 15px e posiciona acima do marcador
+            fig_linha.update_traces(textposition="top center", textfont_size=15, line=dict(color='#1E3A8A', width=3))
+            fig_linha.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(tickmode='linear')
+            )
             st.plotly_chart(fig_linha, use_container_width=True)
+
+            # Tabela Executiva Detalhada
+            st.markdown("### 📋 Listagem de Lojas da Janela de Expansão")
+            colunas_exibicao = ['ID_LOJA', 'LOJAS', 'UF', 'ANO_ABERTURA', 
+                                "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", "Aluguel ABRI'26", 
+                                'M² Salão Venda', "VENDA ABR'26", "DRE ABRI'26", 'TEM_ESTACIONAMENTO']
+            colunas_existentes = [c for c in colunas_exibicao if c in df_filtrado.columns]
+            st.dataframe(
+                df_filtrado[colunas_existentes].style.format({
+                    "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26": "R$ {:,.2f}",
+                    "Aluguel ABRI'26": "R$ {:,.2f}",
+                    "M² Salão Venda": "{:,.1f} m²",
+                    "VENDA ABR'26": "R$ {:,.2f}",
+                    "DRE ABRI'26": "{:,.2%}"
+                }, na_rep="N/A"), 
+                use_container_width=True
+            )
 
     except Exception as e:
         st.error(f"Erro ao processar: {e}")
