@@ -65,12 +65,28 @@ arquivo_carregado = st.sidebar.file_uploader(
 
 def tratar_dados(df):
     df.columns = df.columns.astype(str).str.strip()
-    colunas_numericas = ["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", "Aluguel ABRI'26", "M² Salão Venda", "VENDA ABR'26", "DRE ABRI'26"]
+    colunas_numericas = [
+        "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", 
+        "Aluguel ABRI'26", 
+        "M² Salão Venda", 
+        "VENDA ABR'26", 
+        "DRE ABRI'26",
+        "% do Faturamento ABRI'26 X Aluguel",
+        "Produdividade m²",
+        "Valor Aluguel ABRI'26 X M²",
+        "Valor Aluguel ABRI'26 x M²"
+    ]
     for col in colunas_numericas:
         if col in df.columns:
             if df[col].dtype == 'object':
-                df[col] = df[col].astype(str).str.replace('R$', '', regex=False).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).str.strip()
+                df[col] = df[col].astype(str).str.replace('R$', '', regex=False).str.replace('%', '', regex=False).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).str.strip()
             df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Normalização de porcentagem se necessário
+            if col == "% do Faturamento ABRI'26 X Aluguel":
+                if df[col].max() > 1.0:
+                    df[col] = df[col] / 100.0
+                    
     if 'DATA DE ABERTURA' in df.columns:
         df['DATA DE ABERTURA'] = pd.to_datetime(df['DATA DE ABERTURA'], errors='coerce')
         df['ANO_ABERTURA'] = df['DATA DE ABERTURA'].dt.year.fillna(0).astype(int)
@@ -89,6 +105,9 @@ if arquivo_carregado is not None:
             df_bruto = pd.read_excel(arquivo_carregado, sheet_name=aba_alvo)
             
         df_lojas = tratar_dados(df_bruto)
+        
+        # Identificar coluna de aluguel por m²
+        col_aluguel_m2 = "Valor Aluguel ABRI'26 X M²" if "Valor Aluguel ABRI'26 X M²" in df_lojas.columns else "Valor Aluguel ABRI'26 x M²"
         
         # 1° BLOCO: VISÃO GERAL
         st.header("🏢 1° Bloco: Panorama Geral da Rede")
@@ -156,6 +175,10 @@ if arquivo_carregado is not None:
             pct_com_vagas = (safra_com_vagas / safra_total_lojas * 100) if safra_total_lojas > 0 else 0
             pct_sem_vagas = (safra_sem_vagas / safra_total_lojas * 100) if safra_total_lojas > 0 else 0
 
+            # Separação interna dos dados filtrados para as 4 análises adicionais
+            df_fil_com = df_filtrado[df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim']
+            df_fil_sem = df_filtrado[df_filtrado['TEM_ESTACIONAMENTO'] == 'Não']
+
             # Linha superior de métricas
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total de Aberturas", f"{safra_total_lojas} PDVs")
@@ -191,6 +214,48 @@ if arquivo_carregado is not None:
                     <div class="metric-value">{safra_sem_vagas} PDVs <span class="metric-pct">({pct_sem_vagas:.1f}%)</span></div>
                 </div>
                 """, unsafe_allow_html=True)
+
+            # ----------------------------------------------------
+            # QUADROS OPERACIONAIS: 4 NOVAS ANÁLISES SOLICITADAS
+            # ----------------------------------------------------
+            st.write("") 
+            st.markdown("### 📊 Indicadores de Performance Operacional (Médias da Safra)")
+            
+            col_tab_com, col_tab_sem = st.columns(2)
+            
+            with col_tab_com:
+                st.markdown("**Com Estacionamento**")
+                if not df_fil_com.empty:
+                    dados_com = {
+                        "Métrica": ["% Fat x Aluguel", "Produtividade m²", "Aluguel x M²", "M² Salão Venda"],
+                        "Valor Médio": [
+                            f"{df_fil_com['% do Faturamento ABRI\'26 X Aluguel\'].mean()*100:.2f}%",
+                            f"R$ {df_fil_com['Produdividade m²'].mean():,.2f}",
+                            f"R$ {df_fil_com[col_aluguel_m2].mean():,.2f}" if col_aluguel_m2 in df_fil_com.columns else "N/A",
+                            f"{df_fil_com['M² Salão Venda'].mean():,.1f} m²"
+                        ]
+                    }
+                    st.dataframe(pd.DataFrame(dados_com), use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Sem dados para esta seleção.")
+
+            with col_tab_sem:
+                st.markdown("**Sem Estacionamento**")
+                if not df_fil_sem.empty:
+                    dados_sem = {
+                        "Métrica": ["% Fat x Aluguel", "Produtividade m²", "Aluguel x M²", "M² Salão Venda"],
+                        "Valor Médio": [
+                            f"{df_fil_sem['% do Faturamento ABRI\'26 X Aluguel\'].mean()*100:.2f}%",
+                            f"R$ {df_fil_sem['Produdividade m²'].mean():,.2f}",
+                            f"R$ {df_fil_sem[col_aluguel_m2].mean():,.2f}" if col_aluguel_m2 in df_fil_sem.columns else "N/A",
+                            f"{df_fil_sem['M² Salão Venda'].mean():,.1f} m²"
+                        ]
+                    }
+                    st.dataframe(pd.DataFrame(dados_sem), use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Sem dados para esta seleção.")
+
+            st.markdown("---")
 
             # ----------------------------------------------------
             # GRÁFICO 1: GRÁFICO DE BARRAS POR UF COM RÓTULOS NO TOPO
