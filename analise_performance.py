@@ -173,6 +173,10 @@ if arquivo_carregado is not None:
             safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
             safra_sem_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Não').sum()
 
+            # Cálculos de Percentual Dinâmico baseados no Total da Safra Filtrada
+            pct_negativas = (safra_negativas / safra_total_lojas * 100) if safra_total_lojas > 0 else 0
+            pct_sem_vagas = (safra_sem_vagas / safra_total_lojas * 100) if safra_total_lojas > 0 else 0
+
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total de Aberturas", f"{safra_total_lojas} PDVs")
             m2.metric("Fat. Médio (Safra Abr/26)", f"R$ {safra_med_fat_abr:,.2f}" if not pd.isna(safra_med_fat_abr) else "N/A")
@@ -180,9 +184,14 @@ if arquivo_carregado is not None:
             m4.metric("Metragem Média (Safra)", f"{safra_med_m2:,.1f} m²" if not pd.isna(safra_med_m2) else "N/A")
 
             m5, m6, m7 = st.columns(3)
-            m5.metric("Lojas com DRE Negativo", f"{safra_negativas} PDVs", delta=f"{safra_negativas} operando no vermelho", delta_color="inverse")
+            m5.metric(
+                "Lojas com DRE Negativo mês (ABRI'26)", 
+                f"{safra_negativas} PDVs ({pct_negativas:.1f}%)", 
+                delta=f"{safra_negativas} operando no vermelho", 
+                delta_color="inverse"
+            )
             m6.metric("Safra Com Vagas", f"{safra_com_vagas} PDVs")
-            m7.metric("Safra Sem Vagas", f"{safra_sem_vagas} PDVs")
+            m7.metric("Safra Sem Vagas", f"{safra_sem_vagas} PDVs ({pct_sem_vagas:.1f}%)")
 
             # ----------------------------------------------------
             # GRÁFICO 1: GRÁFICO DE BARRAS POR UF COM RÓTULOS NO TOPO
