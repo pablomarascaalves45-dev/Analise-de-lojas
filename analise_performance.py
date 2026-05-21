@@ -36,12 +36,17 @@ arquivo_carregado = st.sidebar.file_uploader(
     help="Carregue o arquivo extraído para gerar o relatório dinâmico automaticamente."
 )
 
-# Função robusta para tratar e limpar os dados após o upload
+# Função robusta para tratar, renomear e limpar os dados após o upload
 def tratar_dados(df):
     df.columns = df.columns.astype(str).str.strip()
     
+    # Renomeia a coluna complexa para um nome seguro evitando quebra por aspas simples
+    coluna_antiga = "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"
+    if coluna_antiga in df.columns:
+        df = df.rename(columns={coluna_antiga: "MED_FAT_12M"})
+    
     colunas_numericas = [
-        "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", 
+        "MED_FAT_12M", 
         "Aluguel ABRI'26", 
         "M² Salão Venda", 
         "VENDA ABR'26", 
@@ -80,8 +85,8 @@ if arquivo_carregado is not None:
             
         df_lojas = tratar_dados(df_bruto)
         
-        # DEFINIÇÃO DA COLUNA PADRÃO SOLICITADA PARA OS CÁLCULOS
-        col_faturamento_padrao = "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"
+        # Identificador unificado da coluna tratada de faturamento médio
+        col_faturamento_padrao = "MED_FAT_12M"
         
         # ==========================================
         # 1° BLOCO: VISÃO GERAL (TOTAL DA REDE)
@@ -219,4 +224,52 @@ if arquivo_carregado is not None:
             
             df_base_anos = pd.DataFrame({'ANO_ABERTURA': ano_selecionado})
             df_ano_group = pd.merge(df_base_anos, df_ano_group, on='ANO_ABERTURA', how='left').fillna(0)
-            df_
+            df_ano_group['Quantidade de Lojas'] = df_ano_group['Quantidade de Lojas'].astype(int)
+            df_ano_group = df_ano_group.sort_values('ANO_ABERTURA')
+            
+            df_ano_group['Rotulo'] = df_ano_group['Quantidade de Lojas'].apply(lambda x: f"{x} lojas")
+
+            fig_linha = px.line(
+                df_ano_group,
+                x='ANO_ABERTURA',
+                y='Quantidade de Lojas',
+                title="Evolução de Aberturas por Ano (Visão Crítica de Volume)",
+                labels={'ANO_ABERTURA': 'Ano de Abertura', 'Quantidade de Lojas': 'Lojas Abertas'},
+                markers=True, 
+                text='Rotulo' 
+            )
+            fig_linha.update_traces(textposition="top center", line=dict(color='#1E3A8A', width=3))
+            fig_linha.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(tickmode='linear') 
+            )
+            st.plotly_chart(fig_linha, use_container_width=True)
+
+            # Tabela Executiva Detalhada
+            st.markdown("### 📋 Listagem de Lojas da Janela de Expansão")
+            
+            # Mapeamento para exibição na tabela com cabeçalho amigável
+            df_tabela_exibicao = df_filtrado.copy()
+            df_tabela_exibicao = df_tabela_exibicao.rename(columns={"MED_FAT_12M": "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"})
+            
+            colunas_exibicao = ['ID_LOJA', 'LOJAS', 'UF', 'ANO_ABERTURA', 
+                                "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", "Aluguel ABRI'26", 
+                                'M² Salão Venda', "VENDA ABR'26", "DRE ABRI'26", 'TEM_ESTACIONAMENTO']
+            
+            colunas_existentes = [c for c in colunas_exibicao if c in df_tabela_exibicao.columns]
+            
+            st.dataframe(
+                df_tabela_exibicao[colunas_existentes].style.format({
+                    "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26": "R$ {:,.2f}",
+                    "Aluguel ABRI'26": "R$ {:,.2f}",
+                    "M² Salão Venda": "{:,.1f} m²",
+                    "VENDA ABR'26": "R$ {:,.2f}",
+                    "DRE ABRI'26": "{:,.2%}"
+                }, na_rep="N/A"), 
+                use_container_width=True
+            )
+    except Exception as e:
+        st.error(f"Erro inesperado ao processar o arquivo estrutural. Detalhes técnicos: {e}")
+else:
+    st.info("👋 Tudo pronto! Basta arrastar ou anexar o seu arquivo de lojas (`.csv` ou `.xlsx`) no campo à esquerda para carregar o painel da diretoria.")
