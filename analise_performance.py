@@ -80,7 +80,7 @@ if arquivo_carregado is not None:
             
         df_lojas = tratar_dados(df_bruto)
         
-        # Coluna padrão para faturamento médio adotada em todo o sistema
+        # Coluna padrão unificada para Faturamento Médio Mensal
         col_faturamento_padrao = "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"
         
         # ==========================================
@@ -167,3 +167,15 @@ if arquivo_carregado is not None:
         if df_filtrado.empty:
             st.warning("Selecione os Anos e Estados desejados na barra lateral.")
         else:
+            safra_total_lojas = len(df_filtrado)
+            safra_med_fat = df_filtrado[col_faturamento_padrao].mean()
+            safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean()
+            safra_med_m2 = df_filtrado["M² Salão Venda"].mean()
+            safra_venda_abr = df_filtrado["VENDA ABR'26"].sum()
+            
+            safra_negativas = (df_filtrado["DRE ABRI'26"] < 0).sum()
+            safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
+            safra_sem_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Não').sum()
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total
