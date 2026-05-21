@@ -36,7 +36,7 @@ arquivo_carregado = st.sidebar.file_uploader(
     help="Carregue o arquivo extraído para gerar o relatório dinâmico automaticamente."
 )
 
-# Função robusta para tratar, renomear e limpar os dados após o upload
+# Função robusta e corrigida para tratamento numérico do padrão brasileiro (pt-BR)
 def tratar_dados(df):
     df.columns = df.columns.astype(str).str.strip()
     
@@ -55,8 +55,15 @@ def tratar_dados(df):
     
     for col in colunas_numericas:
         if col in df.columns:
+            # Se a coluna veio como texto (object/string), limpa os pontos de milhar e troca a vírgula por ponto
             if df[col].dtype == 'object':
-                df[col] = df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+                df[col] = df[col].astype(str).str.strip()
+                # Remove símbolos comuns caso existam (R$, espaços)
+                df[col] = df[col].str.replace('R$', '', regex=False).str.strip()
+                # Substitui pontos de milhar por vazio e depois a vírgula decimal por ponto
+                df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+            
+            # Força a conversão para número puro. Se houver erro, vira NaN (não quebra o cálculo)
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
     if 'DATA DE ABERTURA' in df.columns:
@@ -94,9 +101,11 @@ if arquivo_carregado is not None:
         st.header("🏢 1° Bloco: Panorama Geral da Rede")
 
         total_lojas = int(df_lojas['ID_LOJA'].nunique()) if 'ID_LOJA' in df_lojas.columns else len(df_lojas)
-        med_fat = df_lojas[col_faturamento_padrao].mean()
-        med_aluguel = df_lojas["Aluguel ABRI'26"].mean()
-        med_m2 = df_lojas["M² Salão Venda"].mean()
+        
+        # Ignora valores nulos (NaN) para trazer a média matemática exata das linhas preenchidas
+        med_fat = df_lojas[col_faturamento_padrao].mean(skipna=True)
+        med_aluguel = df_lojas["Aluguel ABRI'26"].mean(skipna=True)
+        med_m2 = df_lojas["M² Salão Venda"].mean(skipna=True)
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -124,21 +133,21 @@ if arquivo_carregado is not None:
             st.subheader("✅ 2° Bloco: Lojas COM Estacionamento")
             c1, c2 = st.columns(2)
             c1.metric("Qtd Lojas com Vagas", f"{len(df_com_vagas)} PDVs")
-            c2.metric("Fat. Médio Mensal", f"R$ {df_com_vagas[col_faturamento_padrao].mean():,.2f}")
+            c2.metric("Fat. Médio Mensal", f"R$ {df_com_vagas[col_faturamento_padrao].mean(skipna=True):,.2f}")
             
             c3, c4 = st.columns(2)
-            c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-            c4.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
+            c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean(skipna=True):,.2f}")
+            c4.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean(skipna=True):,.1f} m²")
 
         with col_sem:
             st.subheader("❌ 3° Bloco: Lojas SEM Estacionamento")
             s1, s2 = st.columns(2)
             s1.metric("Qtd Lojas sem Vagas", f"{len(df_sem_vagas)} PDVs")
-            s2.metric("Fat. Médio Mensal", f"R$ {df_sem_vagas[col_faturamento_padrao].mean():,.2f}")
+            s2.metric("Fat. Médio Mensal", f"R$ {df_sem_vagas[col_faturamento_padrao].mean(skipna=True):,.2f}")
             
             s3, s4 = st.columns(2)
-            s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-            s4.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
+            s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean(skipna=True):,.2f}")
+            s4.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean(skipna=True):,.1f} m²")
 
         st.markdown("---")
 
@@ -173,10 +182,10 @@ if arquivo_carregado is not None:
             st.warning("Selecione os Anos e Estados desejados na barra lateral.")
         else:
             safra_total_lojas = len(df_filtrado)
-            safra_med_fat = df_filtrado[col_faturamento_padrao].mean()
-            safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean()
-            safra_med_m2 = df_filtrado["M² Salão Venda"].mean()
-            safra_venda_abr = df_filtrado["VENDA ABR'26"].sum()
+            safra_med_fat = df_filtrado[col_faturamento_padrao].mean(skipna=True)
+            safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean(skipna=True)
+            safra_med_m2 = df_filtrado["M² Salão Venda"].mean(skipna=True)
+            safra_venda_abr = df_filtrado["VENDA ABR'26"].sum(skipna=True)
             
             safra_negativas = (df_filtrado["DRE ABRI'26"] < 0).sum()
             safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
@@ -249,7 +258,6 @@ if arquivo_carregado is not None:
             # Tabela Executiva Detalhada
             st.markdown("### 📋 Listagem de Lojas da Janela de Expansão")
             
-            # Mapeamento para exibição na tabela com cabeçalho amigável
             df_tabela_exibicao = df_filtrado.copy()
             df_tabela_exibicao = df_tabela_exibicao.rename(columns={"MED_FAT_12M": "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"})
             
