@@ -65,12 +65,28 @@ arquivo_carregado = st.sidebar.file_uploader(
 
 def tratar_dados(df):
     df.columns = df.columns.astype(str).str.strip()
-    colunas_numericas = ["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", "Aluguel ABRI'26", "M² Salão Venda", "VENDA ABR'26", "DRE ABRI'26"]
+    colunas_numericas = [
+        "MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26", 
+        "Aluguel ABRI'26", 
+        "M² Salão Venda", 
+        "VENDA ABR'26", 
+        "DRE ABRI'26",
+        "% do Faturamento ABRI'26 X Aluguel",
+        "Produdividade m²",
+        "Valor Aluguel ABRI'26 X M²",
+        "Valor Aluguel ABRI'26 x M²"
+    ]
     for col in colunas_numericas:
         if col in df.columns:
             if df[col].dtype == 'object':
-                df[col] = df[col].astype(str).str.replace('R$', '', regex=False).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).str.strip()
+                df[col] = df[col].astype(str).str.replace('R$', '', regex=False).str.replace('%', '', regex=False).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).str.strip()
             df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Ajuste de escala caso a porcentagem venha em formato decimal ou inteiro maior que 1
+            if col == "% do Faturamento ABRI'26 X Aluguel":
+                if df[col].max() > 1.0:
+                    df[col] = df[col] / 100.0
+                    
     if 'DATA DE ABERTURA' in df.columns:
         df['DATA DE ABERTURA'] = pd.to_datetime(df['DATA DE ABERTURA'], errors='coerce')
         df['ANO_ABERTURA'] = df['DATA DE ABERTURA'].dt.year.fillna(0).astype(int)
@@ -90,18 +106,21 @@ if arquivo_carregado is not None:
             
         df_lojas = tratar_dados(df_bruto)
         
+        # Unificando nomenclaturas possíveis para o aluguel por m2
+        col_aluguel_m2 = "Valor Aluguel ABRI'26 X M²" if "Valor Aluguel ABRI'26 X M²" in df_lojas.columns else "Valor Aluguel ABRI'26 x M²"
+        
         # 1° BLOCO: VISÃO GERAL
         st.header("🏢 1° Bloco: Panorama Geral da Rede")
         total_lojas = int(df_lojas['ID_LOJA'].nunique()) if 'ID_LOJA' in df_lojas.columns else len(df_lojas)
         med_fat_abr = df_lojas["VENDA ABR'26"].mean()
         med_aluguel = df_lojas["Aluguel ABRI'26"].mean()
-        med_m2 = df_lojas["M² Salão Venda"].mean()
+        med_m2_geral = df_lojas["M² Salão Venda"].mean()
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total de Lojas", f"{total_lojas} PDVs")
         col2.metric("Fat. Médio (Abril/26)", f"R$ {med_fat_abr:,.2f}" if not pd.isna(med_fat_abr) else "N/A")
         col3.metric("Aluguel Médio (Abril/26)", f"R$ {med_aluguel:,.2f}" if not pd.isna(med_aluguel) else "N/A")
-        col4.metric("Metragem Média (Salão)", f"{med_m2:,.1f} m²" if not pd.isna(med_m2) else "N/A")
+        col4.metric("Metragem Média (Salão)", f"{med_m2_geral:,.1f} m²" if not pd.isna(med_m2_geral) else "N/A")
 
         st.markdown("---")
 
@@ -151,22 +170,38 @@ if arquivo_carregado is not None:
             safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
             safra_sem_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Não').sum()
 
-            # Cálculos de Percentual
+            # Cálculos de Percentual das Lojas
             pct_negativas = (safra_negativas / safra_total_lojas * 100) if safra_total_lojas > 0 else 0
             pct_com_vagas = (safra_com_vagas / safra_total_lojas * 100) if safra_total_lojas > 0 else 0
             pct_sem_vagas = (safra_sem_vagas / safra_total_lojas * 100) if safra_total_lojas > 0 else 0
 
-            # Linha superior de métricas
+            # Separação dos Subgrupos filtrados (Com e Sem Vagas) para as novas médias requisitadas
+            df_fil_com = df_filtrado[df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim']
+            df_fil_sem = df_filtrado[df_filtrado['TEM_ESTACIONAMENTO'] == 'Não']
+
+            # Médias para o subgrupo COM VAGAS
+            med_pct_fat_com = df_fil_com["% do Faturamento ABRI'26 X Aluguel"].mean() * 100
+            med_prod_com = df_fil_com["Produdividade m²"].mean()
+            med_aluguel_m2_com = df_fil_com[col_aluguel_m2].mean() if col_aluguel_m2 in df_fil_com.columns else 0
+            med_m2_salao_com = df_fil_com["M² Salão Venda"].mean()
+
+            # Médias para o subgrupo SEM VAGAS
+            med_pct_fat_sem = df_fil_sem["% do Faturamento ABRI'26 X Aluguel"].mean() * 100
+            med_prod_sem = df_fil_sem["Produdividade m²"].mean()
+            med_aluguel_m2_sem = df_fil_sem[col_aluguel_m2].mean() if col_aluguel_m2 in df_fil_sem.columns else 0
+            med_m2_salao_sem = df_fil_sem["M² Salão Venda"].mean()
+
+            # Linha superior de métricas básicas
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total de Aberturas", f"{safra_total_lojas} PDVs")
             m2.metric("Fat. Médio (Safra Abr/26)", f"R$ {safra_med_fat_abr:,.2f}")
             m3.metric("Aluguel Médio (Safra)", f"R$ {safra_med_aluguel:,.2f}")
             m4.metric("Metragem Média (Safra)", f"{safra_med_m2:,.1f} m²")
 
-            # Linha inferior com CSS personalizado para as porcentagens menores e em outra cor
             st.write("") # Espaçador
+            
+            # Linha principal de Status e Distribuição (DRE e Vagas)
             m5, m6, m7 = st.columns(3)
-
             with m5:
                 st.markdown(f"""
                 <div class="metric-card">
@@ -192,6 +227,38 @@ if arquivo_carregado is not None:
                 </div>
                 """, unsafe_allow_html=True)
 
+            st.write("") # Espaçador
+            
+            # NOVOS BLOCOS DE ANÁLISE: COM VAGAS VS SEM VAGAS
+            st.markdown("### 📊 Indicadores Médios Operacionais da Safra")
+            col_metrics_com, col_metrics_sem = st.columns(2)
+            
+            with col_metrics_com:
+                st.markdown("""<h4 style='color: #1E3A8A; font-size: 16px; margin-bottom: 12px;'>Com Estacionamento</h4>""", unsafe_allow_html=True)
+                m_c1, m_c2, m_c3, m_c4 = st.columns(4)
+                with m_c1:
+                    st.markdown(f"""<div class="metric-card"><div class="metric-label">% Fat x Aluguel</div><div class="metric-value" style="font-size: 20px;">{med_pct_fat_com:.2f}%</div></div>""", unsafe_allow_html=True)
+                with m_c2:
+                    st.markdown(f"""<div class="metric-card"><div class="metric-label">Produtividade m²</div><div class="metric-value" style="font-size: 20px;">R$ {med_prod_com:,.2f}</div></div>""", unsafe_allow_html=True)
+                with m_c3:
+                    st.markdown(f"""<div class="metric-card"><div class="metric-label">Aluguel x M²</div><div class="metric-value" style="font-size: 20px;">R$ {med_aluguel_m2_com:,.2f}</div></div>""", unsafe_allow_html=True)
+                with m_c4:
+                    st.markdown(f"""<div class="metric-card"><div class="metric-label">M² Salão Venda</div><div class="metric-value" style="font-size: 20px;">{med_m2_salao_com:,.1f} m²</div></div>""", unsafe_allow_html=True)
+
+            with col_metrics_sem:
+                st.markdown("""<h4 style='color: #4B5563; font-size: 16px; margin-bottom: 12px;'>Sem Estacionamento</h4>""", unsafe_allow_html=True)
+                m_s1, m_s2, m_s3, m_s4 = st.columns(4)
+                with m_s1:
+                    st.markdown(f"""<div class="metric-card"><div class="metric-label">% Fat x Aluguel</div><div class="metric-value" style="font-size: 20px;">{med_pct_fat_sem:.2f}%</div></div>""", unsafe_allow_html=True)
+                with m_s2:
+                    st.markdown(f"""<div class="metric-card"><div class="metric-label">Produtividade m²</div><div class="metric-value" style="font-size: 20px;">R$ {med_prod_sem:,.2f}</div></div>""", unsafe_allow_html=True)
+                with m_s3:
+                    st.markdown(f"""<div class="metric-card"><div class="metric-label">Aluguel x M²</div><div class="metric-value" style="font-size: 20px;">R$ {med_aluguel_m2_sem:,.2f}</div></div>""", unsafe_allow_html=True)
+                with m_s4:
+                    st.markdown(f"""<div class="metric-card"><div class="metric-label">M² Salão Venda</div><div class="metric-value" style="font-size: 20px;">{med_m2_salao_sem:,.1f} m²</div></div>""", unsafe_allow_html=True)
+
+            st.markdown("---")
+
             # ----------------------------------------------------
             # GRÁFICO 1: GRÁFICO DE BARRAS POR UF COM RÓTULOS NO TOPO
             # ----------------------------------------------------
@@ -200,7 +267,6 @@ if arquivo_carregado is not None:
             df_uf_group['ANO_ABERTURA'] = df_uf_group['ANO_ABERTURA'].astype(str)
             fig_uf = px.bar(df_uf_group, x='UF', y='Quantidade de Aberturas', color='ANO_ABERTURA', barmode='stack', text_auto=True)
             
-            # AJUSTE PONTUAL: Força o tamanho da fonte para 16px e impede o corte automático de textos menores
             fig_uf.update_traces(textfont_size=16, textposition='inside')
             fig_uf.update_layout(
                 uniformtext=dict(mode='hide', minsize=14),
@@ -217,7 +283,6 @@ if arquivo_carregado is not None:
             df_ano_group['Rotulo'] = df_ano_group['Quantidade de Lojas'].apply(lambda x: f"{x} lojas")
             fig_linha = px.line(df_ano_group, x='ANO_ABERTURA', y='Quantidade de Lojas', markers=True, text='Rotulo')
             
-            # AJUSTE PONTUAL: Aumenta o rótulo do gráfico de linha para 15px e posiciona acima do marcador
             fig_linha.update_traces(textposition="top center", textfont_size=15, line=dict(color='#1E3A8A', width=3))
             fig_linha.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)', 
@@ -245,3 +310,5 @@ if arquivo_carregado is not None:
 
     except Exception as e:
         st.error(f"Erro ao processar: {e}")
+else:
+    st.info("👋 Tudo pronto! Basta arrastar ou anexar o seu arquivo de lojas (`.csv` ou `.xlsx`) no campo à esquerda para carregar o painel da diretoria.")
