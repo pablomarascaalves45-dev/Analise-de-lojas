@@ -50,13 +50,11 @@ def tratar_dados(df):
     
     for col in colunas_numericas:
         if col in df.columns:
-            # AJUSTE SEGURO: Só faz substituição de texto se a coluna não tiver sido lida como número puro
             if df[col].dtype == 'object':
                 df[col] = df[col].astype(str).str.strip()
                 df[col] = df[col].str.replace('R$', '', regex=False).str.strip()
                 df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
             
-            # Converte para float puro (ignora NaNs para não quebrar a média matemática)
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
     if 'DATA DE ABERTURA' in df.columns:
@@ -92,19 +90,15 @@ if arquivo_carregado is not None:
 
         total_lojas = int(df_lojas['ID_LOJA'].nunique()) if 'ID_LOJA' in df_lojas.columns else len(df_lojas)
         
-        # CALCULO CORRETO: Aplica a média matemática na coluna real de 12 meses
-        med_fat = df_lojas["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
         med_aluguel = df_lojas["Aluguel ABRI'26"].mean()
         med_m2 = df_lojas["M² Salão Venda"].mean()
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Total de Lojas", f"{total_lojas} PDVs")
         with col2:
-            st.metric("Faturamento Médio Mensal (12m)", f"R$ {med_fat:,.2f}" if not pd.isna(med_fat) else "N/A")
-        with col3:
             st.metric("Aluguel Médio (Abril/26)", f"R$ {med_aluguel:,.2f}" if not pd.isna(med_aluguel) else "N/A")
-        with col4:
+        with col3:
             st.metric("Metragem Média (Salão)", f"{med_m2:,.1f} m²" if not pd.isna(med_m2) else "N/A")
 
         st.markdown("---")
@@ -121,23 +115,17 @@ if arquivo_carregado is not None:
 
         with col_com:
             st.subheader("✅ 2° Bloco: Lojas COM Estacionamento")
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             c1.metric("Qtd Lojas com Vagas", f"{len(df_com_vagas)} PDVs")
-            c2.metric("Fat. Médio Mensal", f"R$ {df_com_vagas['MÉDIA FATURAMENTO DE MAI\'25 ATÉ ABR\'26'].mean():,.2f}")
-            
-            c3, c4 = st.columns(2)
-            c3.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-            c4.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
+            c2.metric("Aluguel Médio", f"R$ {df_com_vagas['Aluguel ABRI\'26'].mean():,.2f}")
+            c3.metric("Metragem Média", f"{df_com_vagas['M² Salão Venda'].mean():,.1f} m²")
 
         with col_sem:
             st.subheader("❌ 3° Bloco: Lojas SEM Estacionamento")
-            s1, s2 = st.columns(2)
+            s1, s2, s3 = st.columns(3)
             s1.metric("Qtd Lojas sem Vagas", f"{len(df_sem_vagas)} PDVs")
-            s2.metric("Fat. Médio Mensal", f"R$ {df_sem_vagas['MÉDIA FATURAMENTO DE MAI\'25 ATÉ ABR\'26'].mean():,.2f}")
-            
-            s3, s4 = st.columns(2)
-            s3.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
-            s4.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
+            s2.metric("Aluguel Médio", f"R$ {df_sem_vagas['Aluguel ABRI\'26'].mean():,.2f}")
+            s3.metric("Metragem Média", f"{df_sem_vagas['M² Salão Venda'].mean():,.1f} m²")
 
         st.markdown("---")
 
@@ -172,26 +160,22 @@ if arquivo_carregado is not None:
             st.warning("Selecione os Anos e Estados desejados na barra lateral.")
         else:
             safra_total_lojas = len(df_filtrado)
-            safra_med_fat = df_filtrado["MÉDIA FATURAMENTO DE MAI'25 ATÉ ABR'26"].mean()
             safra_med_aluguel = df_filtrado["Aluguel ABRI'26"].mean()
             safra_med_m2 = df_filtrado["M² Salão Venda"].mean()
-            safra_venda_abr = df_filtrado["VENDA ABR'26"].sum()
             
             safra_negativas = (df_filtrado["DRE ABRI'26"] < 0).sum()
             safra_com_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Sim').sum()
             safra_sem_vagas = (df_filtrado['TEM_ESTACIONAMENTO'] == 'Não').sum()
 
-            m1, m2, m3, m4 = st.columns(4)
+            m1, m2, m3 = st.columns(3)
             m1.metric("Total de Aberturas", f"{safra_total_lojas} PDVs")
-            m2.metric("Fat. Médio Mensal (Safra)", f"R$ {safra_med_fat:,.2f}" if not pd.isna(safra_med_fat) else "N/A")
-            m3.metric("Aluguel Médio (Safra)", f"R$ {safra_med_aluguel:,.2f}" if not pd.isna(safra_med_aluguel) else "N/A")
-            m4.metric("Metragem Média (Safra)", f"{safra_med_m2:,.1f} m²" if not pd.isna(safra_med_m2) else "N/A")
+            m2.metric("Aluguel Médio (Safra)", f"R$ {safra_med_aluguel:,.2f}" if not pd.isna(safra_med_aluguel) else "N/A")
+            m3.metric("Metragem Média (Safra)", f"{safra_med_m2:,.1f} m²" if not pd.isna(safra_med_m2) else "N/A")
 
-            m5, m6, m7, m8 = st.columns(4)
-            m5.metric("Faturamento Abril/26 (Somado)", f"R$ {safra_venda_abr:,.2f}" if not pd.isna(safra_venda_abr) else "N/A")
-            m6.metric("Lojas com DRE Negativo", f"{safra_negativas} PDVs", delta=f"{safra_negativas} operando no vermelho", delta_color="inverse")
-            m7.metric("Safra Com Vagas", f"{safra_com_vagas} PDVs")
-            m8.metric("Safra Sem Vagas", f"{safra_sem_vagas} PDVs")
+            m4, m5, m6 = st.columns(3)
+            m4.metric("Lojas com DRE Negativo", f"{safra_negativas} PDVs", delta=f"{safra_negativas} operando no vermelho", delta_color="inverse")
+            m5.metric("Safra Com Vagas", f"{safra_com_vagas} PDVs")
+            m6.metric("Safra Sem Vagas", f"{safra_sem_vagas} PDVs")
 
             # ----------------------------------------------------
             # GRÁFICO 1: GRÁFICO DE BARRAS POR UF COM RÓTULOS NO TOPO
